@@ -60,6 +60,9 @@ loss of "tribal knowledge."
   points at an open issue (e.g. "tracked in issue #2") or a `blocked` label, the PR that closes that
   issue must also update or remove that pointer/label in the same PR — don't leave documentation
   referring to an issue that's already closed.
+- **The `superpowers` skill's scratch output (`docs/superpowers/specs/`, `docs/superpowers/plans/`)
+  is never committed** — it's git-ignored. If a design decision from that output needs to persist,
+  write it into this file, a subfolder `CLAUDE.md`, or `docs/architecture.md` instead.
 
 ## Pre-push checks
 
