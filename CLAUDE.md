@@ -89,13 +89,6 @@ in `lefthook.yml` at the repo root. Filling in the actual commands is tracked in
   one class defines both the DB table and the API schema).
 - Migrations: Alembic.
 
-## Auth
-
-Managed identity provider: [Clerk](https://clerk.com/), used across all three pieces, with
-passkeys as a goal everywhere. Backend verifies the JWT Clerk issues; web uses Clerk's official
-Next.js SDK; mobile opens Clerk's hosted sign-in page in a system-browser sheet rather than
-`clerk_flutter`. See [`docs/architecture.md`](docs/architecture.md#auth) for why.
-
 ## Linting / formatting
 
 - Backend: `ruff` (lint + format, one tool).
@@ -128,14 +121,6 @@ workflow, not part of this check. Writing the actual workflow is tracked in
   in sync as new variables are added.
 - `.env` is also blocked at the tool-permission level (`.claude/settings.json`) so it can't be read
   or edited by an AI agent even by accident — this is a hard block, not just an instruction.
-
-## API contract between backend and clients
-
-FastAPI auto-generates an OpenAPI schema. Both clients generate types (not full clients) from that
-schema rather than hand-writing request/response types — the schema is the single source of
-truth. See [`docs/architecture.md`](docs/architecture.md#api-contract-between-backend-and-clients)
-for why, `backend/CLAUDE.md` for how the schema is exported, and `web/CLAUDE.md` /
-`mobile/CLAUDE.md` for each side's codegen command.
 
 ## Still undecided (do not assume — ask before implementing)
 
