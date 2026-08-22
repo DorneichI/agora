@@ -85,7 +85,21 @@ in `lefthook.yml` at the repo root. Filling in the actual commands is tracked in
 
 ## Auth
 
-**Not yet decided** — do not assume Clerk or any other provider. See "Still undecided" below.
+Managed identity provider: [Clerk](https://clerk.com/), used across all three pieces, with
+passkeys (Touch ID/Face ID/Windows Hello via WebAuthn) as a goal everywhere:
+
+- **Backend**: verifies the JWT Clerk issues — no hand-rolled password storage/reset flows.
+- **Web**: Clerk's official Next.js SDK directly. Passkeys are mature and documented here.
+- **Mobile**: does **not** use `clerk_flutter` (Clerk's Flutter SDK is beta and
+  community-maintained, not officially supported by Clerk, and has no documented passkey support).
+  Instead, the app opens Clerk's hosted sign-in page in a **system-browser sheet**
+  (`ASWebAuthenticationSession` on iOS, Chrome Custom Tabs on Android — via a package like
+  `flutter_web_auth_2`), then receives the session back through a deep link. This works because a
+  system-browser sheet is a real browser context with full WebAuthn support (unlike an embedded
+  WebView, which doesn't support passkeys reliably) — so mobile gets the same passkey support as
+  web without depending on Clerk's unsupported native mobile SDK. Exact redirect-URI/deep-link
+  wiring (and possibly an iOS Associated Domains entitlement) is an implementation detail to work
+  out and test when this is actually built.
 
 ## Linting / formatting
 
@@ -134,6 +148,5 @@ for each side's codegen command.
 
 ## Still undecided (do not assume — ask before implementing)
 
-- Auth provider/strategy.
 - Hosting platform(s) for backend/web/mobile.
 - Mobile distribution tooling (e.g. Fastlane, Codemagic) for TestFlight/Play releases.
