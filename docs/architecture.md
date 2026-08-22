@@ -32,3 +32,44 @@ hand-writing request/response types — the schema is the single source of truth
 
 See `backend/CLAUDE.md` for how the schema is exported, and `web/CLAUDE.md` / `mobile/CLAUDE.md`
 for each side's codegen command.
+
+## Soft delete
+
+Every table uses `SoftDeleteMixin` (`backend/app/soft_delete.py`) instead of participating in real
+`DELETE`s. A row's `deleted_at` stays `NULL` while it's active and gets set to a timestamp instead
+of the row being removed.
+
+- **`SoftDeleteMixin`**: an SQLModel mixin providing `id`, `created_at`, `updated_at`, and a
+  nullable `deleted_at`. Any table model gets soft-delete for free by inheriting it:
+  `class Foo(SoftDeleteMixin, SQLModel, table=True)`.
+- **Read filtering**: a `do_orm_execute` SQLAlchemy event, registered globally on `Session`, adds a
+  `deleted_at IS NULL` criterion (via `with_loader_criteria`) to every SELECT against a
+  `SoftDeleteMixin` model — including joins and eager/lazy loads. Pass
+  `.execution_options(include_deleted=True)` on a specific query to see soft-deleted rows too (e.g.
+  an admin "restore" screen).
+- **Write rewriting**: a `before_flush` event, also registered globally on `Session`, intercepts
+  any `session.delete(obj)` call on a `SoftDeleteMixin` instance and rewrites it into
+  `obj.deleted_at = now()` before the flush proceeds, so no real `DELETE` is ever issued for these
+  tables.
+- **Partial unique indexes only**: any unique constraint on a soft-deletable table must be scoped
+  to `WHERE deleted_at IS NULL`, never a plain unique constraint — otherwise a soft-deleted row
+  permanently blocks reuse of that value (e.g. re-registering a deleted user's email, rejoining a
+  league after leaving). Declare it in `__table_args__`:
+
+  ```python
+  from sqlalchemy import Index, text
+
+  class User(SoftDeleteMixin, SQLModel, table=True):
+      email: str
+      __table_args__ = (
+          Index(
+              "ix_user_email_active",
+              "email",
+              unique=True,
+              postgresql_where=text("deleted_at IS NULL"),
+          ),
+      )
+  ```
+
+  Alembic's `--autogenerate` does not reliably detect `postgresql_where` — always check generated
+  migrations by hand for indexes on soft-deletable tables.
