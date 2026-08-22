@@ -21,6 +21,12 @@ only becomes final once the user makes an explicit, unambiguous selection (e.g. 
 question with a specific option). Only write something into this repo's documentation as decided
 after that has happened — not before.
 
+**Documentation can be wrong or stale.** This file and the other `CLAUDE.md`/`docs/` files are a
+snapshot of decisions made at some point in the past, not ground truth. If something documented
+here doesn't match what you observe in the code, contradicts itself, or just doesn't make sense for
+the task at hand, do not silently follow it and do not silently override it either — flag the
+discrepancy to the user and let them decide how to resolve it.
+
 ## Where things live
 
 - `backend/CLAUDE.md` — FastAPI-specific commands, structure, and conventions.
