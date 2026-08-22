@@ -47,6 +47,8 @@ def _rewrite_delete_as_soft_delete(session, flush_context, instances):
     for obj in list(session.deleted):
         if isinstance(obj, SoftDeleteMixin):
             # No public API cancels a pending session.delete(); this mirrors what
-            # SQLAlchemy's own rollback path does internally (see plan doc for detail).
+            # SQLAlchemy's own rollback path does internally. Not a documented API —
+            # if a future SQLAlchemy upgrade changes this internal, this file's tests
+            # will catch it immediately.
             session._deleted.pop(inspect(obj), None)
             obj.deleted_at = _utcnow()
