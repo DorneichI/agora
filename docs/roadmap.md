@@ -18,7 +18,8 @@ Users can:
 - create an account
 - create a league
 - add themselves to a league
-- invite other users to a league
+
+League invites are deferred — not scheduled into a phase yet (see issue #8).
 
 ## Phase 2 — Auth (web)
 
