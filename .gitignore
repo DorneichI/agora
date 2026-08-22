@@ -15,6 +15,11 @@ node_modules/
 .next/
 out/
 npm-debug.log*
+web/AGENTS.md
+web/test-results/
+web/playwright-report/
+web/blob-report/
+web/next-env.d.ts
 
 # Flutter/Dart (mobile/)
 .dart_tool/
@@ -30,3 +35,6 @@ android/.gradle/
 .DS_Store
 .vscode/
 .idea/
+
+# Claude Code agent worktrees (local tool artifacts, not repo content)
+.claude/worktrees/
