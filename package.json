@@ -5,6 +5,8 @@
     "lefthook": "^2.1.10"
   },
   "scripts": {
-    "prepare": "lefthook install"
+    "prepare": "lefthook install",
+    "sync-env": "bash scripts/sync-env.sh",
+    "test:sync-env": "bash scripts/test-sync-env.sh"
   }
 }
