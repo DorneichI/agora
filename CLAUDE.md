@@ -145,6 +145,18 @@ workflow, not part of this check. Writing the actual workflow is tracked in
   in sync as new variables are added.
 - `.env` is also blocked at the tool-permission level (`.claude/settings.json`) so it can't be read
   or edited by an AI agent even by accident — this is a hard block, not just an instruction.
+- If your local `.env` has fallen behind `.env.example` (new variables added upstream), run
+  `npm run sync-env` (wraps `scripts/sync-env.sh`) to regenerate it: it keeps every value you've
+  already set, adds any new keys from `.env.example` as placeholders, and warns about (then drops)
+  any key your `.env` has that `.env.example` no longer declares. It writes a `.env.bak` backup of
+  the old file before overwriting.
+- `.env.bak` gets the exact same protection as `.env`: git-ignored (via the existing `.env.*`
+  pattern in `.gitignore`) and blocked at the tool-permission level in `.claude/settings.json`.
+- A dedicated secrets manager (e.g. Doppler, Infisical, 1Password CLI) was considered instead of
+  this script and explicitly deferred — this project is small/early-stage, prod hosting isn't
+  chosen yet, and whichever host is picked will likely provide its own per-environment secret
+  store, making a separate secrets manager redundant. Revisit if the team grows or the chosen host
+  doesn't cover this well.
 
 ## Still undecided (do not assume — ask before implementing)
 

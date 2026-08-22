@@ -3,7 +3,10 @@
     "deny": [
       "Read(**/.env)",
       "Edit(**/.env)",
-      "Write(**/.env)"
+      "Write(**/.env)",
+      "Read(**/.env.bak)",
+      "Edit(**/.env.bak)",
+      "Write(**/.env.bak)"
     ]
   }
 }
