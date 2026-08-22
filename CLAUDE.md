@@ -15,6 +15,12 @@ FastAPI, Next.js, Flutter, or typical patterns in any of them. Before making a t
 architecture choice, present the options and tradeoffs and let the user decide — do not silently
 pick a default.
 
+**A recommendation is not a decision.** Giving a recommendation (even when asked "what do you
+think?") does not make it settled, and a vague or non-committal reply is not confirmation. A choice
+only becomes final once the user makes an explicit, unambiguous selection (e.g. answering a direct
+question with a specific option). Only write something into this repo's documentation as decided
+after that has happened — not before.
+
 ## Where things live
 
 - `backend/CLAUDE.md` — FastAPI-specific commands, structure, and conventions.
@@ -53,10 +59,8 @@ loss of "tribal knowledge."
 
 A [lefthook](https://github.com/evilmartians/lefthook) `pre-push` hook runs lint, typecheck, and
 tests for whichever part(s) of the repo changed, before a push is allowed to proceed. Config lives
-in `lefthook.yml` at the repo root.
-
-> TODO once backend/web/mobile exist: fill in the actual lint/typecheck/test commands in
-> `lefthook.yml`.
+in `lefthook.yml` at the repo root. Filling in the actual commands is tracked in
+[issue #2](https://github.com/DorneichI/agora/issues/2).
 
 ## Local dev environment
 
@@ -81,9 +85,7 @@ in `lefthook.yml` at the repo root.
 
 ## Auth
 
-Managed identity provider: [Clerk](https://clerk.com/) — implements OAuth2/OIDC + JWT under the
-hood, has first-class Next.js and Flutter SDKs, and the FastAPI backend only needs to verify the
-JWT it issues (no hand-rolled password storage, reset flows, or token rotation to own).
+**Not yet decided** — do not assume Clerk or any other provider. See "Still undecided" below.
 
 ## Linting / formatting
 
@@ -96,10 +98,8 @@ JWT it issues (no hand-rolled password storage, reset flows, or token rotation t
 GitHub Actions run lint/typecheck/test for whichever part(s) changed, triggered on every pull
 request (this repo is public, so Actions minutes are unlimited/free — no reason to make this
 manual). Actual signed mobile release builds (TestFlight/Play) are a separate, manual/tag-triggered
-workflow, not part of this check.
-
-> TODO once backend/web/mobile exist: write `.github/workflows/ci.yml` using `astral-sh/setup-uv`,
-> `actions/setup-node`, and `subosito/flutter-action`, path-filtered per stack.
+workflow, not part of this check. Writing the actual workflow is tracked in
+[issue #3](https://github.com/DorneichI/agora/issues/3).
 
 ## Environments
 
@@ -134,5 +134,6 @@ for each side's codegen command.
 
 ## Still undecided (do not assume — ask before implementing)
 
+- Auth provider/strategy.
 - Hosting platform(s) for backend/web/mobile.
 - Mobile distribution tooling (e.g. Fastlane, Codemagic) for TestFlight/Play releases.
