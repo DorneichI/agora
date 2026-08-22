@@ -4,19 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Agora is a fantasy rowing app: a Python/FastAPI backend and a Next.js frontend, in one repo.
+Agora is a fantasy rowing app with three deployable pieces in one repo:
+
+- `backend/` — Python/FastAPI API.
+- `web/` — Next.js web frontend.
+- `mobile/` — Flutter app (Android + iOS).
 
 The user building this is not deeply familiar with this stack. Do not assume prior knowledge of
-FastAPI, Next.js, or typical patterns in either. Before making a tooling, library, or architecture
-choice, present the options and tradeoffs and let the user decide — do not silently pick a default.
+FastAPI, Next.js, Flutter, or typical patterns in any of them. Before making a tooling, library, or
+architecture choice, present the options and tradeoffs and let the user decide — do not silently
+pick a default.
 
 ## Where things live
 
 - `backend/CLAUDE.md` — FastAPI-specific commands, structure, and conventions.
-- `frontend/CLAUDE.md` — Next.js-specific commands, structure, and conventions.
-- This file only covers rules that apply across both.
+- `web/CLAUDE.md` — Next.js-specific commands, structure, and conventions.
+- `mobile/CLAUDE.md` — Flutter-specific commands, structure, and conventions.
+- This file only covers rules that apply across two or more of them.
 
-If a task touches both backend and frontend, read both subfolder CLAUDE.md files first.
+If a task touches more than one of backend/web/mobile, read each relevant subfolder's CLAUDE.md
+first.
 
 ## Durable knowledge belongs in this repo, not in AI-tool memory
 
@@ -40,8 +47,33 @@ A [lefthook](https://github.com/evilmartians/lefthook) `pre-push` hook runs lint
 tests for whichever part(s) of the repo changed, before a push is allowed to proceed. Config lives
 in `lefthook.yml` at the repo root.
 
-> TODO once backend/frontend exist: fill in the actual lint/typecheck/test commands in `lefthook.yml`
-> once those tools are chosen in `backend/CLAUDE.md` / `frontend/CLAUDE.md`.
+> TODO once backend/web/mobile exist: fill in the actual lint/typecheck/test commands in
+> `lefthook.yml`.
+
+## Local dev environment
+
+- `backend/` and `web/` run via Docker Compose (`docker-compose.yml` at the repo root). Both
+  services bind-mount their source directory into the running container and run their dev server
+  in watch/reload mode (`uvicorn --reload` for the backend, `next dev` for web) — editing code on
+  the host takes effect immediately, no image rebuild needed. The image only needs rebuilding when
+  a dependency (uv lockfile / package.json) changes.
+- `mobile/` runs natively via `flutter run` (Docker isn't practical for iOS/Android builds) and
+  points at the backend's dev URL through Flutter build flavors (see `mobile/CLAUDE.md`).
+- Python dependency management: [uv](https://github.com/astral-sh/uv).
+- Web (`web/`) package manager: npm.
+- Backend tests: pytest. Web tests: Vitest (unit/component) + Playwright (e2e).
+
+## Environments
+
+- Two tiers beyond local dev: **staging** and **prod**. No preprod for now — can be added later
+  without changing this shape.
+- Backend/web: `main` auto-deploys to staging; prod is a promotion of that same build (not a
+  rebuild from source), triggered manually or by tag.
+- Mobile has no hosted "staging" — instead it's build **flavors** (dev/staging/prod) selecting the
+  backend URL, distributed via app-store tracks: TestFlight / Play internal-or-closed testing
+  stands in for staging, App Store / Play production track is prod.
+- Hosting platform(s) for each piece, and mobile release tooling (e.g. Fastlane, Codemagic), are
+  still open — see below.
 
 ## Secrets
 
@@ -50,17 +82,19 @@ in `lefthook.yml` at the repo root.
 - `.env` is also blocked at the tool-permission level (`.claude/settings.json`) so it can't be read
   or edited by an AI agent even by accident — this is a hard block, not just an instruction.
 
-## API contract between backend and frontend
+## API contract between backend and clients
 
-FastAPI auto-generates an OpenAPI schema. The frontend generates its TypeScript types from that
-schema using [openapi-typescript](https://openapi-ts.dev/) — it does not hand-write API response
-types. See `backend/CLAUDE.md` for how the schema is exported, and `frontend/CLAUDE.md` for the
-codegen command.
+FastAPI auto-generates an OpenAPI schema. Both clients generate code from that schema rather than
+hand-writing request/response types — the schema is the single source of truth:
+
+- `web/` uses [openapi-typescript](https://openapi-ts.dev/) — types only, hand-written fetch calls.
+- `mobile/` uses `openapi_generator` configured for **models only** (not its generated client) —
+  same principle as web: generated types, hand-written calls (via `dio`/`http`).
+
+See `backend/CLAUDE.md` for how the schema is exported, and `web/CLAUDE.md` / `mobile/CLAUDE.md`
+for each side's codegen command.
 
 ## Still undecided (do not assume — ask before implementing)
 
-- How to bring up backend + frontend together for local dev (e.g. docker compose vs. running both
-  separately).
-- Python package/dependency manager for the backend.
-- JS package manager for the frontend.
-- Testing frameworks for each side.
+- Staging/preprod/prod environment strategy, and hosting platform(s) for backend/web/mobile.
+- Mobile distribution tooling (e.g. Fastlane, Codemagic) for TestFlight/Play releases.
