@@ -54,6 +54,10 @@ loss of "tribal knowledge."
   Pull work from Issues; reference the issue being closed in the PR body (`Closes #12`) so merging
   auto-closes it. The branch name's issue number (above) makes this traceable even before the PR
   exists.
+- **Closing out tracked work must also update the docs that pointed at it.** If any `CLAUDE.md`
+  points at an open issue (e.g. "tracked in issue #2") or a `blocked` label, the PR that closes that
+  issue must also update or remove that pointer/label in the same PR — don't leave documentation
+  referring to an issue that's already closed.
 
 ## Pre-push checks
 
