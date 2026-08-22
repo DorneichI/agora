@@ -1,3 +1,7 @@
+# `root:` changes cwd for a command but leaves the hook's inherited GIT_PREFIX/GIT_DIR
+# pointing at the repo root, so any `git` call embedded in a `root:`-scoped `run:` must
+# unset both first (`env -u GIT_PREFIX -u GIT_DIR`) or it silently stages files under the
+# wrong (phantom, non-`root:`-relative) path.
 glob_matcher: doublestar
 
 pre-commit:
@@ -6,10 +10,10 @@ pre-commit:
     backend-format:
       root: "backend/"
       glob: "backend/**/*.py"
-      run: uv run ruff format {staged_files} && uv run ruff check --fix {staged_files}
+      run: uv run ruff format {staged_files} && env -u GIT_PREFIX -u GIT_DIR git add {staged_files} && uv run ruff check --fix {staged_files}
       stage_fixed: true
     web-lint:
       root: "web/"
       glob: "web/**/*.{js,jsx,ts,tsx}"
-      run: npx eslint --fix {staged_files} && npx prettier --write {staged_files}
+      run: npx eslint --fix {staged_files} && env -u GIT_PREFIX -u GIT_DIR git add {staged_files} && npx prettier --write {staged_files}
       stage_fixed: true
