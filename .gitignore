@@ -1,0 +1,32 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python (backend/)
+__pycache__/
+*.py[cod]
+.venv/
+.uv/
+*.egg-info/
+
+# Node (web/)
+node_modules/
+.next/
+out/
+npm-debug.log*
+
+# Flutter/Dart (mobile/)
+.dart_tool/
+.flutter-plugin-registrant/
+build/
+ios/Pods/
+ios/.symlinks/
+android/.gradle/
+*.g.dart
+*.freezed.dart
+
+# Editor/OS
+.DS_Store
+.vscode/
+.idea/
