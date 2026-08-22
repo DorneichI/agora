@@ -9,6 +9,8 @@ __pycache__/
 .venv/
 .uv/
 *.egg-info/
+backend/.coverage
+backend/coverage.txt
 
 # Node (web/)
 node_modules/
@@ -21,6 +23,8 @@ web/playwright-report/
 web/blob-report/
 web/next-env.d.ts
 web/tsconfig.tsbuildinfo
+web/coverage/
+web/coverage.txt
 
 # Flutter/Dart (mobile/)
 .dart_tool/
