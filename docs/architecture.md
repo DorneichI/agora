@@ -8,8 +8,15 @@ For the operational rules Claude Code needs on every task, see the root [`CLAUDE
 Managed identity provider: [Clerk](https://clerk.com/), used across all three pieces, with
 passkeys (Touch ID/Face ID/Windows Hello via WebAuthn) as a goal everywhere:
 
+**Passkeys are currently blocked**: Clerk gates passkey/biometric sign-in behind a paid plan,
+discovered while implementing issue #16. The web login UI (#16) shipped with email/password and
+Google OAuth only; whether to pursue passkeys (and a paid Clerk plan) is still an open decision,
+not yet tracked in a follow-up issue. Don't assume passkeys work anywhere in the stack until
+that's resolved.
+
 - **Backend**: verifies the JWT Clerk issues — no hand-rolled password storage/reset flows.
-- **Web**: Clerk's official Next.js SDK directly. Passkeys are mature and documented here.
+- **Web**: Clerk's official Next.js SDK directly. Passkeys are mature and documented here
+  (once the paid-plan blocker above is resolved).
 - **Mobile**: does **not** use `clerk_flutter` (Clerk's Flutter SDK is beta and
   community-maintained, not officially supported by Clerk, and has no documented passkey support).
   Instead, the app opens Clerk's hosted sign-in page in a **system-browser sheet**
