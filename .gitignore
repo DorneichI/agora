@@ -38,3 +38,6 @@ android/.gradle/
 
 # Claude Code agent worktrees (local tool artifacts, not repo content)
 .claude/worktrees/
+
+# superpowers skill scratch output (design specs/plans) - local working files, not repo docs
+docs/superpowers/
