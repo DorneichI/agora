@@ -72,10 +72,25 @@ loss of "tribal knowledge."
 
 ## Pre-push checks
 
-A [lefthook](https://github.com/evilmartians/lefthook) `pre-push` hook runs lint, typecheck, and
-tests for whichever part(s) of the repo changed, before a push is allowed to proceed. Config lives
-in `lefthook.yml` at the repo root. Filling in the actual commands is tracked in
-[issue #2](https://github.com/DorneichI/agora/issues/2).
+[lefthook](https://github.com/evilmartians/lefthook) runs two git hooks, scoped to whichever of
+`backend/`/`web/` actually changed (config lives in `lefthook.yml` at the repo root; mobile isn't
+covered yet — no `mobile/` directory exists):
+
+- **`pre-commit`**: fast, staged-files-only formatting/lint (`ruff format` + `ruff check --fix`
+  for `backend/`, `eslint --fix` + `prettier --write` for `web/`).
+- **`pre-push`**: lint/typecheck + tests for the changed package(s), per each package's own tools
+  (`ruff check` + `pytest` for `backend/`; `eslint` + `tsc --noEmit` + tests for `web/` — `backend/`
+  has no separate typechecker, `ruff` is lint+format only). The backend check runs `pytest` against
+  a real Postgres reachable at `localhost:5432`, so `docker compose up -d postgres` (or
+  `docker compose up -d backend`) must be running locally for it to pass.
+
+`npm install` at the repo root (once, after cloning) installs the `lefthook` binary and wires it
+into `.git/hooks` automatically via the `prepare` script — no separate `lefthook install` step.
+
+Once CI ([issue #3](https://github.com/DorneichI/agora/issues/3), not yet implemented — no
+`.github/workflows/` exists yet) is in place, it will be the authoritative check regardless. Until
+then, these hooks are the only automated gate before merge (besides human review) — don't skip
+them with `--no-verify`.
 
 ## Local dev environment
 

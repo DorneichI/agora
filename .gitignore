@@ -20,6 +20,7 @@ web/test-results/
 web/playwright-report/
 web/blob-report/
 web/next-env.d.ts
+web/tsconfig.tsbuildinfo
 
 # Flutter/Dart (mobile/)
 .dart_tool/

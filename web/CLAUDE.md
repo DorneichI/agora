@@ -33,6 +33,7 @@ Run from inside `web/` (locally with `npm`, or via `docker compose exec web <cmd
 
 ```bash
 npm run lint          # ESLint
+npm run typecheck     # next typegen && tsc --noEmit (regenerates Next.js route types first)
 npm run format:check  # Prettier check (drop --check / use `npm run format` to auto-fix)
 npm run test          # Vitest (unit/component)
 npm run test:e2e      # Playwright (e2e) — starts its own dev server automatically

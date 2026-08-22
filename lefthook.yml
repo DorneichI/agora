@@ -1,0 +1,36 @@
+# `root:` changes cwd for a command but leaves the hook's inherited GIT_PREFIX/GIT_DIR
+# pointing at the repo root, so any `git` call embedded in a `root:`-scoped `run:` must
+# unset both first (`env -u GIT_PREFIX -u GIT_DIR`) or it silently stages files under the
+# wrong (phantom, non-`root:`-relative) path.
+glob_matcher: doublestar
+
+pre-commit:
+  parallel: true
+  commands:
+    backend-format:
+      root: "backend/"
+      glob: "backend/**/*.py"
+      run: uv run ruff format {staged_files} && env -u GIT_PREFIX -u GIT_DIR git add {staged_files} && uv run ruff check --fix {staged_files}
+      stage_fixed: true
+    web-lint:
+      root: "web/"
+      glob: "web/**/*.{js,jsx,ts,tsx}"
+      run: npx eslint --fix {staged_files} && env -u GIT_PREFIX -u GIT_DIR git add {staged_files} && npx prettier --write {staged_files}
+      stage_fixed: true
+
+pre-push:
+  parallel: true
+  commands:
+    # Requires `docker compose up -d postgres` (or `... up -d backend`) running locally —
+    # pytest connects to a real Postgres. The credentials below must match `.env`'s
+    # POSTGRES_USER/PASSWORD/DB if those are ever changed from the shared default.
+    backend-check:
+      root: "backend/"
+      glob: "backend/**/*"
+      env:
+        DATABASE_URL: "postgresql+asyncpg://agora:agora@localhost:5432/agora"
+      run: uv run ruff check . && uv run pytest
+    web-check:
+      root: "web/"
+      glob: "web/**/*"
+      run: npm run lint && npm run typecheck && npm run test
