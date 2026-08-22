@@ -61,7 +61,37 @@ in `lefthook.yml` at the repo root.
   points at the backend's dev URL through Flutter build flavors (see `mobile/CLAUDE.md`).
 - Python dependency management: [uv](https://github.com/astral-sh/uv).
 - Web (`web/`) package manager: npm.
-- Backend tests: pytest. Web tests: Vitest (unit/component) + Playwright (e2e).
+- Backend tests: pytest. Web tests: Vitest (unit/component) + Playwright (e2e). Mobile tests:
+  `flutter test` (unit/widget) + `integration_test` (e2e).
+
+## Backend data layer
+
+- Database: Postgres.
+- ORM: [SQLModel](https://sqlmodel.tiangolo.com/) (built on SQLAlchemy, same author as FastAPI —
+  one class defines both the DB table and the API schema).
+- Migrations: Alembic.
+
+## Auth
+
+Managed identity provider: [Clerk](https://clerk.com/) — implements OAuth2/OIDC + JWT under the
+hood, has first-class Next.js and Flutter SDKs, and the FastAPI backend only needs to verify the
+JWT it issues (no hand-rolled password storage, reset flows, or token rotation to own).
+
+## Linting / formatting
+
+- Backend: `ruff` (lint + format, one tool).
+- Web: ESLint (`eslint-config-next`) + Prettier.
+- Mobile: `dart format` + `flutter analyze` (with `flutter_lints`) — Flutter's built-in tools.
+
+## CI
+
+GitHub Actions run lint/typecheck/test for whichever part(s) changed, triggered on every pull
+request (this repo is public, so Actions minutes are unlimited/free — no reason to make this
+manual). Actual signed mobile release builds (TestFlight/Play) are a separate, manual/tag-triggered
+workflow, not part of this check.
+
+> TODO once backend/web/mobile exist: write `.github/workflows/ci.yml` using `astral-sh/setup-uv`,
+> `actions/setup-node`, and `subosito/flutter-action`, path-filtered per stack.
 
 ## Environments
 
@@ -96,5 +126,5 @@ for each side's codegen command.
 
 ## Still undecided (do not assume — ask before implementing)
 
-- Staging/preprod/prod environment strategy, and hosting platform(s) for backend/web/mobile.
+- Hosting platform(s) for backend/web/mobile.
 - Mobile distribution tooling (e.g. Fastlane, Codemagic) for TestFlight/Play releases.
