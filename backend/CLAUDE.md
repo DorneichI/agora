@@ -46,7 +46,7 @@ uv run alembic revision --autogenerate -m "..."  # generate a migration from mod
 ## Conventions
 
 - **Soft delete**: every table uses `SoftDeleteMixin` (see `docs/architecture.md`'s "Soft delete"
-  section once that's built) — never a plain unique constraint on a soft-deletable table, always a
-  partial unique index scoped to `WHERE deleted_at IS NULL`.
+  section) — never a plain unique constraint on a soft-deletable table, always a partial unique
+  index scoped to `WHERE deleted_at IS NULL`.
 - No hand-rolled password storage — auth identity comes from Clerk (see
   `docs/architecture.md#auth`); the backend only verifies Clerk-issued JWTs.
