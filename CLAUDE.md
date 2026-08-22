@@ -40,6 +40,9 @@ loss of "tribal knowledge."
 - **PRs are always squash-merged** into `main`, so history stays linear (one commit per PR on top).
   This is enforced at the repo level — merge commits and rebase merges are disabled in GitHub
   settings, only squash merge is available.
+- **`main` is protected**: direct pushes are rejected (including for admins) — every change goes
+  through a PR.
+- **Task tracking is plain GitHub Issues** — no separate TODO file, no Projects board (for now).
 
 ## Pre-push checks
 
