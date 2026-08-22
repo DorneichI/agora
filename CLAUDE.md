@@ -36,13 +36,18 @@ loss of "tribal knowledge."
 ## Git conventions
 
 - **Commit messages** follow [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): description` (e.g. `feat(backend): add race scoring endpoint`).
-- **Branch names** follow the same `type` prefixes as commits: `type/short-description` (e.g. `feat/add-boat-lineup`, `fix/race-scoring-bug`).
+- **Branch names** follow the same `type` prefixes as commits, plus the GitHub issue number they
+  close: `type/issue-number-short-description` (e.g. `feat/12-add-boat-lineup`,
+  `fix/47-race-scoring-bug`).
 - **PRs are always squash-merged** into `main`, so history stays linear (one commit per PR on top).
   This is enforced at the repo level — merge commits and rebase merges are disabled in GitHub
   settings, only squash merge is available.
 - **`main` is protected**: direct pushes are rejected (including for admins) — every change goes
   through a PR.
 - **Task tracking is plain GitHub Issues** — no separate TODO file, no Projects board (for now).
+  Pull work from Issues; reference the issue being closed in the PR body (`Closes #12`) so merging
+  auto-closes it. The branch name's issue number (above) makes this traceable even before the PR
+  exists.
 
 ## Pre-push checks
 
