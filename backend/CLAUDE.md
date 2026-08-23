@@ -43,6 +43,16 @@ uv run alembic revision --autogenerate -m "..."  # generate a migration from mod
 `DATABASE_URL` (see root `.env.example`) is read by both the app and Alembic's `env.py` — the
 `alembic.ini` placeholder value is never used for anything real.
 
+**Local dev gotcha**: `pytest` creates/drops all tables directly via `SQLModel.metadata` (see
+`tests/conftest.py`'s `db_session` fixture) against the same local Postgres Alembic tracks —
+it doesn't go through Alembic at all. Running the test suite locally leaves the schema empty while
+`alembic_version` still says "head" even though the tables are gone, so a subsequent `alembic
+downgrade`/`upgrade` against that same database can fail with errors like `index "..." does not
+exist` (Alembic trusts `alembic_version`, not the actual schema, so `upgrade head` alone won't
+re-create anything). If that happens, either `docker compose down -v` the `postgres` volume to
+reset it, or run `alembic stamp base` (resets the version pointer without touching data) followed
+by `alembic upgrade head` (re-runs every migration from scratch).
+
 ## Conventions
 
 - **Soft delete**: every table uses `SoftDeleteMixin` (see `docs/architecture.md`'s "Soft delete"
