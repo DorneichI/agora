@@ -29,6 +29,7 @@ pre-push:
       glob: "backend/**/*"
       env:
         DATABASE_URL: "postgresql+asyncpg://agora:agora@localhost:5432/agora"
+        CLERK_ISSUER: "https://test.clerk.accounts.dev"
       run: uv run ruff check . && uv run pytest
     web-check:
       root: "web/"

@@ -24,6 +24,7 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      CLERK_ISSUER: ${CLERK_ISSUER}
     depends_on:
       postgres:
         condition: service_healthy
