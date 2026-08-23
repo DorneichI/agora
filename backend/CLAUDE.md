@@ -76,3 +76,7 @@ by `alembic upgrade head` (re-runs every migration from scratch).
   index scoped to `WHERE deleted_at IS NULL`.
 - No hand-rolled password storage — auth identity comes from Clerk (see
   `docs/architecture.md#auth`); the backend only verifies Clerk-issued JWTs.
+- **Response schemas**: never use a table model directly as a route's `response_model` — pair
+  every table with a `*Read` SQLModel (e.g. `UserRead`, `LeagueRead`) that excludes
+  `SoftDeleteMixin`'s bookkeeping columns (`created_at`/`updated_at`/`deleted_at`) from the API
+  response.

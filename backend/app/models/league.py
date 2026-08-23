@@ -28,7 +28,8 @@ class LeagueRead(SQLModel):
     """Public shape of a League, used as API response models instead of the table model
     itself -- keeps internal/bookkeeping columns (e.g. any added to SoftDeleteMixin or
     League later) from being auto-exposed (and auto-codegen'd into the web/mobile clients,
-    see docs/architecture.md#api-contract) just by existing on the table."""
+    see docs/architecture.md#api-contract) just by existing on the table. See
+    backend/CLAUDE.md's "Response schemas" convention."""
 
     id: int
     name: str
