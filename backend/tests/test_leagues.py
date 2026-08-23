@@ -113,3 +113,238 @@ async def test_get_soft_deleted_league_returns_404(client, make_clerk_token, db_
     )
 
     assert response.status_code == 404
+
+
+async def test_join_league_without_token_returns_401(client):
+    response = await client.post("/leagues/1/join")
+
+    assert response.status_code == 401
+
+
+async def test_join_nonexistent_league_returns_404(client, make_clerk_token):
+    token = make_clerk_token(
+        clerk_id="user_join_missing_league", email="joinmissing@example.com", name="Join Missing"
+    )
+
+    response = await client.post(
+        "/leagues/999999/join", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 404
+
+
+async def test_join_league_creates_active_membership(client, make_clerk_token, db_session):
+    creator_token = make_clerk_token(
+        clerk_id="user_join_creator", email="joincreator@example.com", name="Join Creator"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Join Test League"},
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    joiner_token = make_clerk_token(
+        clerk_id="user_join_joiner", email="joinjoiner@example.com", name="Join Joiner"
+    )
+    join_response = await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {joiner_token}"}
+    )
+
+    assert join_response.status_code == 204
+
+    me_response = await client.get("/me", headers={"Authorization": f"Bearer {joiner_token}"})
+    joiner_id = me_response.json()["id"]
+
+    membership_rows = (
+        (
+            await db_session.execute(
+                select(LeagueUser).where(
+                    LeagueUser.league_id == league_id, LeagueUser.user_id == joiner_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(membership_rows) == 1
+    assert membership_rows[0].deleted_at is None
+
+
+async def test_join_league_already_active_member_is_idempotent(
+    client, make_clerk_token, db_session
+):
+    token = make_clerk_token(
+        clerk_id="user_join_idempotent", email="joinidempotent@example.com", name="Join Idempotent"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Idempotent Join League"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    league_id = create_response.json()["id"]
+    creator_id = create_response.json()["created_by"]
+
+    join_response = await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert join_response.status_code == 204
+
+    membership_rows = (
+        (
+            await db_session.execute(
+                select(LeagueUser).where(
+                    LeagueUser.league_id == league_id, LeagueUser.user_id == creator_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(membership_rows) == 1
+
+
+async def test_rejoin_after_leave_resurrects_same_row(client, make_clerk_token, db_session):
+    creator_token = make_clerk_token(
+        clerk_id="user_rejoin_creator", email="rejoincreator@example.com", name="Rejoin Creator"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Rejoin Test League"},
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    joiner_token = make_clerk_token(
+        clerk_id="user_rejoin_joiner", email="rejoinjoiner@example.com", name="Rejoin Joiner"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {joiner_token}"}
+    )
+
+    me_response = await client.get("/me", headers={"Authorization": f"Bearer {joiner_token}"})
+    joiner_id = me_response.json()["id"]
+
+    original_membership = (
+        await db_session.execute(
+            select(LeagueUser).where(
+                LeagueUser.league_id == league_id, LeagueUser.user_id == joiner_id
+            )
+        )
+    ).scalar_one()
+    original_id = original_membership.id
+
+    await client.post(
+        f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {joiner_token}"}
+    )
+
+    rejoin_response = await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {joiner_token}"}
+    )
+
+    assert rejoin_response.status_code == 204
+
+    all_rows = (
+        (
+            await db_session.execute(
+                select(LeagueUser)
+                .where(LeagueUser.league_id == league_id, LeagueUser.user_id == joiner_id)
+                .execution_options(include_deleted=True)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(all_rows) == 1
+    assert all_rows[0].id == original_id
+    assert all_rows[0].deleted_at is None
+
+
+async def test_leave_league_without_token_returns_401(client):
+    response = await client.post("/leagues/1/leave")
+
+    assert response.status_code == 401
+
+
+async def test_leave_nonexistent_league_returns_404(client, make_clerk_token):
+    token = make_clerk_token(
+        clerk_id="user_leave_missing_league",
+        email="leavemissing@example.com",
+        name="Leave Missing",
+    )
+
+    response = await client.post(
+        "/leagues/999999/leave", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 404
+
+
+async def test_leave_league_soft_deletes_membership(client, make_clerk_token, db_session):
+    token = make_clerk_token(
+        clerk_id="user_leave_member", email="leavemember@example.com", name="Leave Member"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Leave Test League"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    league_id = create_response.json()["id"]
+    member_id = create_response.json()["created_by"]
+
+    leave_response = await client.post(
+        f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert leave_response.status_code == 204
+
+    active_rows = (
+        (
+            await db_session.execute(
+                select(LeagueUser).where(
+                    LeagueUser.league_id == league_id, LeagueUser.user_id == member_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert active_rows == []
+
+    all_rows = (
+        (
+            await db_session.execute(
+                select(LeagueUser)
+                .where(LeagueUser.league_id == league_id, LeagueUser.user_id == member_id)
+                .execution_options(include_deleted=True)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(all_rows) == 1
+    assert all_rows[0].deleted_at is not None
+
+
+async def test_leave_league_never_joined_is_noop(client, make_clerk_token):
+    creator_token = make_clerk_token(
+        clerk_id="user_leave_noop_creator", email="leavenoopcreator@example.com", name="Creator"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Never Joined League"},
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    bystander_token = make_clerk_token(
+        clerk_id="user_leave_noop_bystander",
+        email="leavenoopbystander@example.com",
+        name="Bystander",
+    )
+    response = await client.post(
+        f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {bystander_token}"}
+    )
+
+    assert response.status_code == 204
