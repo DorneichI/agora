@@ -35,18 +35,41 @@ async def get_current_user(
     if existing is not None:
         return existing
 
-    user = User(clerk_id=clerk_id, email=claims["email"], display_name=claims["name"])
+    try:
+        email = claims["email"]
+        display_name = claims["name"]
+    except KeyError as exc:
+        # Expected if Clerk's session-token template hasn't been customized to add these
+        # claims (see docs/architecture.md#auth) -- surface a clear error instead of a bare
+        # 500 from an uncaught KeyError.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication token is missing required profile claims",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+    user = User(clerk_id=clerk_id, email=email, display_name=display_name)
     session.add(user)
     try:
         await session.commit()
     except IntegrityError:
         await session.rollback()
+        # Recover the same-clerk_id race: two near-simultaneous first logins for the same
+        # Clerk identity both missed the initial SELECT, the other one's INSERT already
+        # committed, so return its row.
         existing = (
             await session.execute(select(User).where(User.clerk_id == clerk_id))
         ).scalar_one_or_none()
-        if existing is None:
-            raise
-        return existing
+        if existing is not None:
+            return existing
+        # Not a clerk_id race: the INSERT collided on the email unique index instead, which
+        # means a *different* Clerk identity already owns this email. Don't fall through to
+        # a bare 500, and don't return the other identity's row -- that would authenticate
+        # this request as the wrong account.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email is already associated with a different account",
+        ) from None
 
     await session.refresh(user)
     return user

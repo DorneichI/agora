@@ -1,5 +1,9 @@
+import time
+
+import jwt
 from sqlmodel import select
 
+from app.clerk import CLERK_ISSUER
 from app.models import User
 
 
@@ -10,6 +14,24 @@ async def test_me_without_token_returns_401(client):
 
 async def test_me_with_garbage_token_returns_401(client):
     response = await client.get("/me", headers={"Authorization": "Bearer not-a-real-token"})
+    assert response.status_code == 401
+
+
+async def test_me_with_token_missing_profile_claims_returns_401(client, _rsa_keypair):
+    """A validly-signed token that's missing the email/name claims (e.g. Clerk's session
+    token template hasn't been customized per docs/architecture.md#auth) must not crash
+    provisioning with an unhandled KeyError."""
+    private_key, _public_key = _rsa_keypair
+    payload = {
+        "sub": "user_no_profile_claims",
+        "iss": CLERK_ISSUER,
+        "iat": int(time.time()),
+        "exp": int(time.time()) + 300,
+    }
+    token = jwt.encode(payload, private_key, algorithm="RS256")
+
+    response = await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
     assert response.status_code == 401
 
 
@@ -76,3 +98,22 @@ async def test_concurrent_first_request_race_returns_existing_row(db_session, mo
 
     assert user.id == existing.id
     assert user.email == "race@example.com"  # existing row wins, not overwritten
+
+
+async def test_me_email_already_used_by_different_clerk_id_returns_409(client, make_clerk_token):
+    """Two different Clerk identities claiming the same email is a genuine conflict, not a
+    same-identity race -- it must not be recovered as if it were (that would authenticate
+    the second request as the first identity's account), and must not surface as a bare
+    500 from an unhandled IntegrityError."""
+    first_token = make_clerk_token(
+        clerk_id="user_first_owner", email="shared@example.com", name="First Owner"
+    )
+    first_response = await client.get("/me", headers={"Authorization": f"Bearer {first_token}"})
+    assert first_response.status_code == 200
+
+    second_token = make_clerk_token(
+        clerk_id="user_second_claimant", email="shared@example.com", name="Second Claimant"
+    )
+    second_response = await client.get("/me", headers={"Authorization": f"Bearer {second_token}"})
+
+    assert second_response.status_code == 409

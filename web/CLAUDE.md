@@ -19,13 +19,28 @@ for the _why_ behind auth and the API contract.
 ## Running locally
 
 Via Docker Compose from the repo root (bind-mounts this directory, `next dev` picks up edits
-immediately — no rebuild needed unless `package.json`/`package-lock.json` changes):
+immediately — no rebuild needed for plain code changes):
 
 ```bash
 docker compose up web
 ```
 
 Serves at `http://localhost:3000`.
+
+**Dependency changes need more than a rebuild.** `docker-compose.yml` mounts a named volume
+(`web_node_modules`) at `/app/node_modules` so the container's installed packages aren't shadowed
+by the host's bind-mounted source directory. That volume is only *populated* from the image the
+first time it's created — Docker does not refresh an already-populated named volume from a
+rebuilt image. So after changing `package.json`/`package-lock.json`, `docker compose build web`
+alone is not enough; the stale volume will still shadow the freshly-installed packages. Remove the
+volume too so it gets reseeded from the new image:
+
+```bash
+docker compose build web
+docker compose rm -sf web
+docker volume rm $(docker volume ls -q --filter name=web_node_modules)
+docker compose up web
+```
 
 ## Commands
 

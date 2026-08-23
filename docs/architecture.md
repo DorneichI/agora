@@ -69,9 +69,16 @@ of the row being removed.
   `.execution_options(include_deleted=True)` on a specific query to see soft-deleted rows too (e.g.
   an admin "restore" screen).
 - **Write rewriting**: a `before_flush` event, also registered globally on `Session`, intercepts
-  any `session.delete(obj)` call on a `SoftDeleteMixin` instance and rewrites it into
-  `obj.deleted_at = now()` before the flush proceeds, so no real `DELETE` is ever issued for these
-  tables.
+  a `session.delete(obj)` call on an already-persisted `SoftDeleteMixin` instance and rewrites it
+  into `obj.deleted_at = now()` before the flush proceeds, so no real `DELETE` is issued for these
+  tables via that path. Two things this does *not* cover: `session.delete()` on an instance that
+  was `add()`-ed but never flushed/committed yet (SQLAlchemy itself rejects that before any event
+  fires — just don't do it; use `session.expunge(obj)` to abandon a pending object instead), and a
+  Core-style bulk statement (`session.execute(delete(Model).where(...))`), which bypasses the
+  unit-of-work identity map this event relies on and issues a real, permanent `DELETE`. Nothing in
+  this codebase does the latter today; a future feature that needs bulk deletes against a
+  soft-deletable table needs a deliberate decision on how to handle it (see the `NOTE` in
+  `soft_delete.py`), not an assumption that this mixin already covers it.
 - **Partial unique indexes only**: any unique constraint on a soft-deletable table must be scoped
   to `WHERE deleted_at IS NULL`, never a plain unique constraint — otherwise a soft-deleted row
   permanently blocks reuse of that value (e.g. re-registering a deleted user's email, rejoining a

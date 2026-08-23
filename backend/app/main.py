@@ -1,16 +1,16 @@
 from fastapi import Depends, FastAPI
 
 from app.deps import get_current_user
-from app.models import User
+from app.models import User, UserRead
 
 app = FastAPI(title="Agora API")
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
+async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/me", response_model=User)
+@app.get("/me", response_model=UserRead)
 async def read_current_user(user: User = Depends(get_current_user)) -> User:
     return user

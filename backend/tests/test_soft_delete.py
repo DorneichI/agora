@@ -57,6 +57,30 @@ async def test_soft_deleted_row_excluded_unless_include_deleted(db_session):
     assert sorted(w.name for w in all_rows) == ["active", "deleted"]
 
 
+async def test_updated_at_bumped_on_modification(db_session):
+    widget = _Widget(name="mutable")
+    db_session.add(widget)
+    await db_session.commit()
+    original_updated_at = widget.updated_at
+
+    widget.name = "mutated"
+    await db_session.commit()
+
+    assert widget.updated_at > original_updated_at
+
+
+async def test_updated_at_bumped_on_soft_delete(db_session):
+    widget = _Widget(name="about-to-delete")
+    db_session.add(widget)
+    await db_session.commit()
+    original_updated_at = widget.updated_at
+
+    await db_session.delete(widget)
+    await db_session.commit()
+
+    assert widget.updated_at > original_updated_at
+
+
 async def test_session_delete_soft_deletes_instead_of_removing_row(db_session):
     widget = _Widget(name="to-delete")
     db_session.add(widget)
@@ -100,3 +124,30 @@ async def test_plain_active_duplicate_still_rejected_by_partial_index(db_session
     db_session.add(_Widget(name="epsilon"))
     with pytest.raises(IntegrityError):
         await db_session.commit()
+
+
+async def test_bulk_core_update_does_not_touch_soft_deleted_rows(db_session):
+    """A Core-style bulk UPDATE (session.execute(update(...)), as opposed to a per-instance
+    ORM attribute change) must still respect the soft-delete boundary: it shouldn't be able
+    to mutate rows that are already soft-deleted."""
+    from sqlalchemy import update
+
+    active = _Widget(name="bulk-active")
+    deleted = _Widget(name="bulk-deleted")
+    deleted.deleted_at = _utcnow_for_test()
+    db_session.add_all([active, deleted])
+    await db_session.commit()
+
+    await db_session.execute(
+        update(_Widget).where(_Widget.name.like("bulk-%")).values(name="bulk-renamed")
+    )
+    await db_session.commit()
+
+    all_rows = (
+        (await db_session.execute(select(_Widget).execution_options(include_deleted=True)))
+        .scalars()
+        .all()
+    )
+    names_by_id = {w.id: w.name for w in all_rows}
+    assert names_by_id[active.id] == "bulk-renamed"
+    assert names_by_id[deleted.id] == "bulk-deleted"

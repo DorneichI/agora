@@ -15,14 +15,27 @@ class SoftDeleteMixin(SQLModel):
 
     id: int | None = Field(default=None, primary_key=True)
     created_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
-    updated_at: datetime = Field(default_factory=_utcnow, sa_type=DateTime(timezone=True))
+    updated_at: datetime = Field(
+        default_factory=_utcnow,
+        sa_type=DateTime(timezone=True),
+        sa_column_kwargs={"onupdate": _utcnow},
+    )
     deleted_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
 
 
 @event.listens_for(Session, "do_orm_execute")
 def _exclude_soft_deleted(execute_state):
+    # NOTE: this covers SELECT plus Core-style bulk UPDATE/DELETE issued via
+    # `session.execute(update(...)/delete(...))` (scoping which rows they can touch to
+    # currently-active ones) but it does NOT rewrite a Core-style bulk DELETE into a soft
+    # delete the way `_rewrite_delete_as_soft_delete` below does for `session.delete(obj)` —
+    # a Core `session.execute(delete(SomeModel).where(...))` still issues a real, permanent
+    # SQL DELETE. Nothing in this codebase does that today; if a future feature needs bulk
+    # deletes against a soft-deletable table, that gap needs a deliberate design decision
+    # (rewrite the statement, forbid it, or accept it as an explicit hard-delete escape
+    # hatch) rather than silently inheriting this filter's coverage.
     if (
-        execute_state.is_select
+        (execute_state.is_select or execute_state.is_update or execute_state.is_delete)
         and not execute_state.is_column_load
         and not execute_state.is_relationship_load
         and not execute_state.execution_options.get("include_deleted", False)

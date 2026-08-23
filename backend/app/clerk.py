@@ -18,7 +18,13 @@ def verify_clerk_jwt(token: str) -> dict:
             signing_key.key,
             algorithms=["RS256"],
             issuer=CLERK_ISSUER,
-            options={"require": ["exp", "iss", "sub"]},
+            # Clerk session tokens aren't validated by audience (there's no `audience=`
+            # value to compare against here) -- without `verify_aud: False`, PyJWT still
+            # rejects the token the moment it happens to carry a non-empty "aud" claim
+            # (e.g. if a future custom session-claims template adds one), which would lock
+            # out every user with a misleading "invalid token" error instead of an obvious
+            # config error.
+            options={"require": ["exp", "iss", "sub"], "verify_aud": False},
         )
     except (jwt.PyJWTError, json.JSONDecodeError) as exc:
         raise HTTPException(

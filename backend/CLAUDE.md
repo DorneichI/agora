@@ -20,13 +20,29 @@ for the *why* behind auth and the API contract.
 ## Running locally
 
 Via Docker Compose from the repo root (bind-mounts this directory, `uvicorn --reload` picks up
-edits immediately — no rebuild needed unless `pyproject.toml`/`uv.lock` changes):
+edits immediately — no rebuild needed for plain code changes):
 
 ```bash
 docker compose up backend
 ```
 
 `GET http://localhost:8000/health` should return `{"status": "ok"}`.
+
+**Dependency changes need more than a rebuild.** `docker-compose.yml` mounts a named volume
+(`backend_venv`) at `/app/.venv` so the container's Linux-installed dependencies aren't shadowed
+by the host's bind-mounted source directory. That volume is only *populated* from the image the
+first time it's created — Docker does not refresh an already-populated named volume from a
+rebuilt image. So after changing `pyproject.toml`/`uv.lock`, `docker compose build backend` alone
+is not enough; the stale volume will still shadow the freshly-installed dependencies. Remove the
+volume too so it gets reseeded from the new image (`docker compose down -v` also works but drops
+*every* service's volumes, including the Postgres data volume — usually more than you want):
+
+```bash
+docker compose build backend
+docker compose rm -sf backend
+docker volume rm $(docker volume ls -q --filter name=backend_venv)
+docker compose up backend
+```
 
 ## Commands
 
