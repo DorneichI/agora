@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgresql+asyncpg://agora:agora@localhost:5432/agora
+      CLERK_ISSUER: https://test.clerk.accounts.dev
     services:
       postgres:
         image: postgres:16-alpine

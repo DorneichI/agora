@@ -15,6 +15,20 @@ not yet tracked in a follow-up issue. Don't assume passkeys work anywhere in the
 that's resolved.
 
 - **Backend**: verifies the JWT Clerk issues — no hand-rolled password storage/reset flows.
+- **Session claims**: the backend's `/me` provisioning (issue #17) reads `email` and `name`
+  directly from the verified JWT's claims — it does not call Clerk's API back for profile data.
+  This requires Clerk's session token to be customized in the Dashboard (Configure → Sessions →
+  Edit) to include those two claims, e.g.:
+
+  ```json
+  {
+    "email": "{{user.primary_email_address}}",
+    "name": "{{user.full_name}}"
+  }
+  ```
+
+  Without this, Clerk's default session token only has `sub`/`iss`/`sid`/etc., and first-login
+  provisioning will fail with a `KeyError` on `claims["email"]`.
 - **Web**: Clerk's official Next.js SDK directly. Passkeys are mature and documented here
   (once the paid-plan blocker above is resolved).
 - **Mobile**: does **not** use `clerk_flutter` (Clerk's Flutter SDK is beta and

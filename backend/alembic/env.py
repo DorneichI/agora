@@ -24,9 +24,11 @@ if database_url:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-target_metadata = None
+from sqlmodel import SQLModel  # noqa: E402
+
+from app import models  # noqa: E402,F401  (import registers User on SQLModel.metadata)
+
+target_metadata = SQLModel.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
