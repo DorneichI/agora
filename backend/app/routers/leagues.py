@@ -4,7 +4,7 @@ from sqlmodel import SQLModel, select
 
 from app.db import get_session
 from app.deps import get_current_user
-from app.models import League, LeagueUser, User
+from app.models import League, LeagueRead, LeagueUser, User
 
 router = APIRouter()
 
@@ -13,7 +13,7 @@ class LeagueCreate(SQLModel):
     name: str
 
 
-@router.post("/leagues", response_model=League)
+@router.post("/leagues", response_model=LeagueRead)
 async def create_league(
     body: LeagueCreate,
     user: User = Depends(get_current_user),
@@ -29,7 +29,7 @@ async def create_league(
     return league
 
 
-@router.get("/leagues/{league_id}", response_model=League)
+@router.get("/leagues/{league_id}", response_model=LeagueRead)
 async def get_league(
     league_id: int,
     user: User = Depends(get_current_user),

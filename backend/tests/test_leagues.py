@@ -39,6 +39,23 @@ async def test_create_league_creates_league_and_membership(client, make_clerk_to
     assert membership_rows[0].user_id == body["created_by"]
 
 
+async def test_create_league_response_excludes_internal_fields(client, make_clerk_token):
+    """LeagueRead is the response shape, not the League table model -- soft-delete
+    bookkeeping columns must not be exposed to API consumers."""
+    token = make_clerk_token(
+        clerk_id="user_league_read_shape", email="readshape@example.com", name="Read Shape"
+    )
+
+    response = await client.post(
+        "/leagues",
+        json={"name": "Charles River Regatta"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    body = response.json()
+    assert set(body.keys()) == {"id", "name", "created_by"}
+
+
 async def test_get_league_without_token_returns_401(client):
     response = await client.get("/leagues/1")
 
@@ -59,7 +76,9 @@ async def test_get_league_returns_created_league(client, make_clerk_token):
     )
 
     assert get_response.status_code == 200
-    assert get_response.json()["name"] == "Boston Sprints"
+    body = get_response.json()
+    assert body["name"] == "Boston Sprints"
+    assert set(body.keys()) == {"id", "name", "created_by"}
 
 
 async def test_get_nonexistent_league_returns_404(client, make_clerk_token):
