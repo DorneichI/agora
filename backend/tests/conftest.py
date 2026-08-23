@@ -49,7 +49,7 @@ async def client(db_session):
     transport = httpx2.ASGITransport(app=app)
     async with httpx2.AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
-    app.dependency_overrides.clear()
+    del app.dependency_overrides[get_session]
 
 
 @pytest.fixture
