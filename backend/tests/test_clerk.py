@@ -36,3 +36,18 @@ def test_garbage_token_rejected():
     with pytest.raises(HTTPException) as exc_info:
         verify_clerk_jwt("not-a-real-token")
     assert exc_info.value.status_code == 401
+
+
+def test_jwks_fetch_returning_non_json_rejected(monkeypatch):
+    import json as json_module
+
+    from app.clerk import _jwk_client, verify_clerk_jwt
+
+    def _raise_json_error(token):
+        raise json_module.JSONDecodeError("Expecting value", "not json", 0)
+
+    monkeypatch.setattr(_jwk_client, "get_signing_key_from_jwt", _raise_json_error)
+
+    with pytest.raises(HTTPException) as exc_info:
+        verify_clerk_jwt("irrelevant-token")
+    assert exc_info.value.status_code == 401

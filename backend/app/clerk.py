@@ -1,3 +1,4 @@
+import json
 import os
 
 import jwt
@@ -19,7 +20,7 @@ def verify_clerk_jwt(token: str) -> dict:
             issuer=CLERK_ISSUER,
             options={"require": ["exp", "iss", "sub"]},
         )
-    except jwt.PyJWTError as exc:
+    except (jwt.PyJWTError, json.JSONDecodeError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication token",
