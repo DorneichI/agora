@@ -47,9 +47,11 @@ def _mock_clerk_jwks(monkeypatch, _rsa_keypair):
 async def client(db_session):
     app.dependency_overrides[get_session] = lambda: db_session
     transport = httpx2.ASGITransport(app=app)
-    async with httpx2.AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
-    del app.dependency_overrides[get_session]
+    try:
+        async with httpx2.AsyncClient(transport=transport, base_url="http://test") as ac:
+            yield ac
+    finally:
+        del app.dependency_overrides[get_session]
 
 
 @pytest.fixture

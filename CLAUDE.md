@@ -87,10 +87,9 @@ covered yet — no `mobile/` directory exists):
 `npm install` at the repo root (once, after cloning) installs the `lefthook` binary and wires it
 into `.git/hooks` automatically via the `prepare` script — no separate `lefthook install` step.
 
-Once CI ([issue #3](https://github.com/DorneichI/agora/issues/3), not yet implemented — no
-`.github/workflows/` exists yet) is in place, it will be the authoritative check regardless. Until
-then, these hooks are the only automated gate before merge (besides human review) — don't skip
-them with `--no-verify`.
+CI (`.github/workflows/ci.yml`, added by [issue #3](https://github.com/DorneichI/agora/issues/3))
+is now in place and is the authoritative check regardless. These hooks remain a fast local
+pre-flight before that — don't skip them with `--no-verify`.
 
 ## Local dev environment
 
@@ -124,8 +123,8 @@ them with `--no-verify`.
 GitHub Actions run lint/typecheck/test for whichever part(s) changed, triggered on every pull
 request (this repo is public, so Actions minutes are unlimited/free — no reason to make this
 manual). Actual signed mobile release builds (TestFlight/Play) are a separate, manual/tag-triggered
-workflow, not part of this check. Writing the actual workflow is tracked in
-[issue #3](https://github.com/DorneichI/agora/issues/3).
+workflow, not part of this check. See `.github/workflows/ci.yml` for the actual workflow (added by
+[issue #3](https://github.com/DorneichI/agora/issues/3), now closed).
 
 ## Environments
 

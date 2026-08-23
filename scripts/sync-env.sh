@@ -50,7 +50,7 @@ if [ "$env_exists" -eq 1 ]; then
     if [[ "$line" =~ $key_regex ]]; then
       key="${line%%=*}"
       if ! grep -q "^${key}=" "$example_file"; then
-        removed+=("${key}=${line#*=}")
+        removed+=("${key}")
       fi
     fi
   done < "$env_file"
@@ -66,7 +66,7 @@ if [ "${#added[@]}" -gt 0 ]; then
 fi
 
 if [ "${#removed[@]}" -gt 0 ]; then
-  echo "Warning: removed keys not present in ${example_file} (old values shown):"
+  echo "Warning: dropped keys not present in ${example_file} (values discarded, not shown -- check ${env_file}.bak if you need the old value):"
   printf '  %s\n' "${removed[@]}"
 fi
 
