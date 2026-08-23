@@ -29,7 +29,8 @@ class UserRead(SQLModel):
     """Public shape of a User, used as API response models instead of the table model
     itself -- keeps internal/bookkeeping columns (e.g. any added to SoftDeleteMixin or
     User later) from being auto-exposed (and auto-codegen'd into the web/mobile clients,
-    see docs/architecture.md#api-contract) just by existing on the table."""
+    see docs/architecture.md#api-contract) just by existing on the table. See
+    backend/CLAUDE.md's "Response schemas" convention."""
 
     id: int
     clerk_id: str
