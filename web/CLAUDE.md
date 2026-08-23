@@ -29,7 +29,7 @@ Serves at `http://localhost:3000`.
 
 **Dependency changes need more than a rebuild.** `docker-compose.yml` mounts a named volume
 (`web_node_modules`) at `/app/node_modules` so the container's installed packages aren't shadowed
-by the host's bind-mounted source directory. That volume is only *populated* from the image the
+by the host's bind-mounted source directory. That volume is only _populated_ from the image the
 first time it's created — Docker does not refresh an already-populated named volume from a
 rebuilt image. So after changing `package.json`/`package-lock.json`, `docker compose build web`
 alone is not enough; the stale volume will still shadow the freshly-installed packages. Remove the
