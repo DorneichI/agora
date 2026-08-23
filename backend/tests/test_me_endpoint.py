@@ -97,7 +97,66 @@ async def test_concurrent_first_request_race_returns_existing_row(db_session, mo
     user = await deps.get_current_user(claims=claims, session=db_session)
 
     assert user.id == existing.id
-    assert user.email == "race@example.com"  # existing row wins, not overwritten
+    # resync-on-login applies on the race-recovery path too: the presented claims win
+    assert user.email == "different@example.com"
+
+
+async def test_me_resyncs_email_and_display_name_on_returning_login(
+    client, make_clerk_token, db_session
+):
+    """Clerk is the source of truth for profile fields -- a returning user's stored
+    email/display_name must be refreshed from the newly-verified token claims, not left
+    stale from whatever was true at first login."""
+    first_token = make_clerk_token(clerk_id="user_resync", email="old@example.com", name="Old Name")
+    first_response = await client.get("/me", headers={"Authorization": f"Bearer {first_token}"})
+    assert first_response.status_code == 200
+    original_id = first_response.json()["id"]
+
+    second_token = make_clerk_token(
+        clerk_id="user_resync", email="new@example.com", name="New Name"
+    )
+    second_response = await client.get("/me", headers={"Authorization": f"Bearer {second_token}"})
+
+    assert second_response.status_code == 200
+    body = second_response.json()
+    assert body["id"] == original_id
+    assert body["email"] == "new@example.com"
+    assert body["display_name"] == "New Name"
+
+    row = (
+        await db_session.execute(select(User).where(User.clerk_id == "user_resync"))
+    ).scalar_one()
+    assert row.email == "new@example.com"
+    assert row.display_name == "New Name"
+
+
+async def test_me_returning_login_with_no_profile_claims_keeps_stored_profile(
+    client, make_clerk_token, _rsa_keypair
+):
+    """A returning user's token missing email/name claims (e.g. a claims-template
+    regression) must not break login for an already-provisioned account -- resync is
+    best-effort, not a hard requirement for authenticating an existing user."""
+    first_token = make_clerk_token(
+        clerk_id="user_resync_no_claims", email="kept@example.com", name="Kept Name"
+    )
+    first_response = await client.get("/me", headers={"Authorization": f"Bearer {first_token}"})
+    assert first_response.status_code == 200
+
+    private_key, _public_key = _rsa_keypair
+    payload = {
+        "sub": "user_resync_no_claims",
+        "iss": CLERK_ISSUER,
+        "iat": int(time.time()),
+        "exp": int(time.time()) + 300,
+    }
+    bare_token = jwt.encode(payload, private_key, algorithm="RS256")
+
+    second_response = await client.get("/me", headers={"Authorization": f"Bearer {bare_token}"})
+
+    assert second_response.status_code == 200
+    body = second_response.json()
+    assert body["email"] == "kept@example.com"
+    assert body["display_name"] == "Kept Name"
 
 
 async def test_me_email_already_used_by_different_clerk_id_returns_409(client, make_clerk_token):

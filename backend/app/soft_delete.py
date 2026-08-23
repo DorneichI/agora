@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, event, inspect, true
+from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm import Session, with_loader_criteria
 from sqlmodel import Field, SQLModel
 
@@ -25,17 +26,25 @@ class SoftDeleteMixin(SQLModel):
 
 @event.listens_for(Session, "do_orm_execute")
 def _exclude_soft_deleted(execute_state):
-    # NOTE: this covers SELECT plus Core-style bulk UPDATE/DELETE issued via
-    # `session.execute(update(...)/delete(...))` (scoping which rows they can touch to
-    # currently-active ones) but it does NOT rewrite a Core-style bulk DELETE into a soft
-    # delete the way `_rewrite_delete_as_soft_delete` below does for `session.delete(obj)` —
-    # a Core `session.execute(delete(SomeModel).where(...))` still issues a real, permanent
-    # SQL DELETE. Nothing in this codebase does that today; if a future feature needs bulk
-    # deletes against a soft-deletable table, that gap needs a deliberate design decision
-    # (rewrite the statement, forbid it, or accept it as an explicit hard-delete escape
-    # hatch) rather than silently inheriting this filter's coverage.
     if (
-        (execute_state.is_select or execute_state.is_update or execute_state.is_delete)
+        execute_state.is_delete
+        and not execute_state.execution_options.get("include_deleted", False)
+        and any(issubclass(mapper.class_, SoftDeleteMixin) for mapper in execute_state.all_mappers)
+    ):
+        # A Core-style bulk `session.execute(delete(Model).where(...))` bypasses both this
+        # event's SELECT/UPDATE scoping and the before_flush rewrite below (which only
+        # intercepts per-instance `session.delete(obj)`) -- it would otherwise issue a
+        # real, permanent SQL DELETE against a soft-deletable table. Forbid it outright
+        # rather than silently hard-deleting.
+        raise InvalidRequestError(
+            "Bulk delete via session.execute(delete(...)) is not supported for "
+            "soft-deletable tables: it would issue a real, permanent SQL DELETE, "
+            "bypassing the soft-delete mixin. Delete instances individually via "
+            "session.delete(obj) instead, which is rewritten into a soft delete."
+        )
+
+    if (
+        (execute_state.is_select or execute_state.is_update)
         and not execute_state.is_column_load
         and not execute_state.is_relationship_load
         and not execute_state.execution_options.get("include_deleted", False)

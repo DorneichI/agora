@@ -151,3 +151,23 @@ async def test_bulk_core_update_does_not_touch_soft_deleted_rows(db_session):
     names_by_id = {w.id: w.name for w in all_rows}
     assert names_by_id[active.id] == "bulk-renamed"
     assert names_by_id[deleted.id] == "bulk-deleted"
+
+
+async def test_bulk_core_delete_against_soft_deletable_table_is_forbidden(db_session):
+    """A Core-style bulk DELETE (session.execute(delete(...))) bypasses both the
+    do_orm_execute active-rows filter and the before_flush session.delete() rewrite -- it
+    would otherwise issue a real, permanent SQL DELETE against a soft-deletable table.
+    Forbid it outright with a clear error instead of silently hard-deleting."""
+    from sqlalchemy import delete
+    from sqlalchemy.exc import InvalidRequestError
+
+    widget = _Widget(name="forbidden-bulk-delete")
+    db_session.add(widget)
+    await db_session.commit()
+
+    with pytest.raises(InvalidRequestError, match="Bulk delete"):
+        await db_session.execute(delete(_Widget).where(_Widget.name == "forbidden-bulk-delete"))
+
+    # the row must survive untouched -- the statement should never have reached the DB
+    remaining = (await db_session.execute(select(_Widget))).scalars().all()
+    assert [w.name for w in remaining] == ["forbidden-bulk-delete"]
