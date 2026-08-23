@@ -1,6 +1,7 @@
 import json
 import time
 
+import httpx2
 import jwt
 import pytest
 import pytest_asyncio
@@ -9,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlmodel import SQLModel
 
 from app.clerk import CLERK_ISSUER, _jwk_client
-from app.db import engine
+from app.db import engine, get_session
+from app.main import app
 
 
 @pytest_asyncio.fixture
@@ -39,6 +41,15 @@ def _mock_clerk_jwks(monkeypatch, _rsa_keypair):
     jwk_dict.update(kid="test-kid", use="sig", alg="RS256")
     signing_key = jwt.PyJWK.from_json(json.dumps(jwk_dict))
     monkeypatch.setattr(_jwk_client, "get_signing_key_from_jwt", lambda token: signing_key)
+
+
+@pytest.fixture
+async def client(db_session):
+    app.dependency_overrides[get_session] = lambda: db_session
+    transport = httpx2.ASGITransport(app=app)
+    async with httpx2.AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
