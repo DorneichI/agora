@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import SQLModel
+from sqlmodel import SQLModel, select
 
 from app.db import get_session
 from app.deps import get_current_user
@@ -26,4 +26,18 @@ async def create_league(
     session.add(LeagueUser(league_id=league.id, user_id=user.id))
     await session.commit()
     await session.refresh(league)
+    return league
+
+
+@router.get("/leagues/{league_id}", response_model=League)
+async def get_league(
+    league_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> League:
+    league = (
+        await session.execute(select(League).where(League.id == league_id))
+    ).scalar_one_or_none()
+    if league is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="League not found")
     return league
