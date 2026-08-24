@@ -42,6 +42,27 @@ that's resolved.
   wiring (and possibly an iOS Associated Domains entitlement) is an implementation detail to work
   out and test when this is actually built.
 
+## Authorization
+
+Authentication (Clerk, above) answers "who is this"; authorization (issue #40) answers "what are
+they allowed to do." The two are deliberately kept separate and simple:
+
+- **`User.role`** is a plain `str` (`"user"` | `"admin"`, default `"user"`) rather than a Postgres
+  enum type or a separate roles/permissions table — there are only two roles and no near-term
+  plan for more, so the extra ceremony (Alembic-managed enum type, or a join table) isn't worth it
+  yet. Revisit if Phase 4 or later needs finer-grained permissions than a binary admin/not-admin
+  split.
+- **No integration with Clerk's own Organizations/Roles features** — admins authenticate exactly
+  like any other user via Clerk; `role` is purely an app-level concept stored on `User`, checked by
+  the backend's own `require_admin` dependency (`backend/app/deps.py`). This avoids taking on a
+  second, Clerk-managed source of truth for authorization on top of the existing Clerk-managed
+  identity.
+- **Bootstrapping the first admin** can't go through a route, because every route that would grant
+  admin needs an admin to call it. Instead it's a one-off script
+  (`backend/scripts/promote_admin.py`, see `backend/CLAUDE.md`) run directly against the database,
+  which only promotes an already-provisioned user (one who's logged in via Clerk at least once) —
+  it never creates a `User` row itself, so it can't be used to conjure an account out of thin air.
+
 ## API contract between backend and clients
 
 FastAPI auto-generates an OpenAPI schema. Both clients generate code from that schema rather than
