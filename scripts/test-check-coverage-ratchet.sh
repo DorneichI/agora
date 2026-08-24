@@ -77,6 +77,24 @@ set -e
 assert_true "missing baseline exits zero" "$([ "$status5" -eq 0 ] && echo true || echo false)"
 assert_contains "missing baseline output explains bootstrap" "$out5" "No coverage baseline"
 
+# Non-numeric current_pct: fail.
+echo "80.00" > "$work/baseline6"
+set +e
+out6="$(bash "$ratchet_script" backend abc "$work/baseline6" 2>&1)"
+status6=$?
+set -e
+assert_true "non-numeric current_pct exits non-zero" "$([ "$status6" -ne 0 ] && echo true || echo false)"
+assert_contains "non-numeric current_pct output flags error" "$out6" "not numeric"
+
+# Non-numeric baseline file content: fail.
+echo "xyz" > "$work/baseline7"
+set +e
+out7="$(bash "$ratchet_script" backend 85.00 "$work/baseline7" 2>&1)"
+status7=$?
+set -e
+assert_true "non-numeric baseline exits non-zero" "$([ "$status7" -ne 0 ] && echo true || echo false)"
+assert_contains "non-numeric baseline output flags error" "$out7" "non-numeric"
+
 echo ""
 echo "Passed: $pass, Failed: $fail"
 if [ "$fail" -gt 0 ]; then
