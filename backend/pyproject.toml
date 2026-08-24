@@ -28,6 +28,15 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 
+[tool.coverage.run]
+# SQLAlchemy's async engine bridges to its sync core via greenlet, which
+# coverage.py's tracer loses track of across that context switch unless told
+# to follow it explicitly (https://github.com/nedbat/coveragepy/issues/1082).
+# `core = "ctrace"` is required on Python 3.13 for the concurrency setting to
+# take effect at all (the newer sysmon-based tracer doesn't support it yet).
+concurrency = ["thread", "greenlet"]
+core = "ctrace"
+
 [tool.ruff]
 line-length = 100
 
