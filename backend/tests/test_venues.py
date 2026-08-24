@@ -1,21 +1,6 @@
 from app.models import Venue
 
 
-async def _make_admin(client, make_clerk_token, db_session, clerk_id, email, name):
-    token = make_clerk_token(clerk_id=clerk_id, email=email, name=name)
-    me_response = await client.get("/me", headers={"Authorization": f"Bearer {token}"})
-    user_id = me_response.json()["id"]
-
-    from app.models import User
-
-    user = await db_session.get(User, user_id)
-    user.role = "admin"
-    db_session.add(user)
-    await db_session.commit()
-
-    return token, user_id
-
-
 async def test_create_venue_without_token_returns_401(client):
     response = await client.post("/venues", json={"name": "Red Top", "location": "Ledyard, CT"})
 
@@ -37,10 +22,10 @@ async def test_create_venue_as_non_admin_returns_403(client, make_clerk_token):
     assert response.status_code == 403
 
 
-async def test_create_venue_as_admin_sets_created_by(client, make_clerk_token, db_session):
-    token, admin_id = await _make_admin(
-        client, make_clerk_token, db_session, "user_venue_admin", "venueadmin@example.com", "Admin"
-    )
+async def test_create_venue_as_admin_sets_created_by(
+    client, make_clerk_token, db_session, make_admin
+):
+    token, admin_id = await make_admin("user_venue_admin", "venueadmin@example.com", "Admin")
 
     response = await client.post(
         "/venues",
@@ -74,14 +59,9 @@ async def test_get_venue_without_token_returns_401(client):
     assert response.status_code == 401
 
 
-async def test_get_venue_as_non_admin_succeeds(client, make_clerk_token, db_session):
-    token, _admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_venue_get_admin",
-        "venuegetadmin@example.com",
-        "Admin",
+async def test_get_venue_as_non_admin_succeeds(client, make_clerk_token, db_session, make_admin):
+    token, _admin_id = await make_admin(
+        "user_venue_get_admin", "venuegetadmin@example.com", "Admin"
     )
     create_response = await client.post(
         "/venues",
@@ -111,15 +91,8 @@ async def test_get_nonexistent_venue_returns_404(client, make_clerk_token):
     assert response.status_code == 404
 
 
-async def test_get_soft_deleted_venue_returns_404(client, make_clerk_token, db_session):
-    token, _admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_venue_softdel",
-        "venuesoftdel@example.com",
-        "Admin",
-    )
+async def test_get_soft_deleted_venue_returns_404(client, make_clerk_token, db_session, make_admin):
+    token, _admin_id = await make_admin("user_venue_softdel", "venuesoftdel@example.com", "Admin")
     create_response = await client.post(
         "/venues",
         json={"name": "Disbanded Course", "location": "Nowhere"},
@@ -142,15 +115,10 @@ async def test_list_venues_without_token_returns_401(client):
     assert response.status_code == 401
 
 
-async def test_list_venues_returns_all_active_venues(client, make_clerk_token, db_session):
-    token, _admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_venue_lister",
-        "venuelister@example.com",
-        "Admin",
-    )
+async def test_list_venues_returns_all_active_venues(
+    client, make_clerk_token, db_session, make_admin
+):
+    token, _admin_id = await make_admin("user_venue_lister", "venuelister@example.com", "Admin")
     await client.post(
         "/venues",
         json={"name": "Red Top", "location": "Ledyard, CT"},
@@ -169,20 +137,39 @@ async def test_list_venues_returns_all_active_venues(client, make_clerk_token, d
     assert {"Red Top", "Cooper River"} <= names
 
 
+async def test_list_venues_excludes_soft_deleted_venues(client, db_session, make_admin):
+    token, _admin_id = await make_admin(
+        "user_venue_list_softdel", "venuelistsoftdel@example.com", "Admin"
+    )
+    create_response = await client.post(
+        "/venues",
+        json={"name": "Ghosted Course", "location": "Nowhere"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    venue_id = create_response.json()["id"]
+
+    venue = await db_session.get(Venue, venue_id)
+    await db_session.delete(venue)
+    await db_session.commit()
+
+    response = await client.get("/venues", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    names = {v["name"] for v in response.json()}
+    assert "Ghosted Course" not in names
+
+
 async def test_patch_venue_without_token_returns_401(client):
     response = await client.patch("/venues/1", json={"name": "New Name"})
 
     assert response.status_code == 401
 
 
-async def test_patch_venue_as_non_admin_returns_403(client, make_clerk_token, db_session):
-    token, _admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_venue_patch_owner",
-        "venuepatchowner@example.com",
-        "Admin",
+async def test_patch_venue_as_non_admin_returns_403(
+    client, make_clerk_token, db_session, make_admin
+):
+    token, _admin_id = await make_admin(
+        "user_venue_patch_owner", "venuepatchowner@example.com", "Admin"
     )
     create_response = await client.post(
         "/venues",
@@ -207,14 +194,11 @@ async def test_patch_venue_as_non_admin_returns_403(client, make_clerk_token, db
     assert response.status_code == 403
 
 
-async def test_patch_nonexistent_venue_returns_404(client, make_clerk_token, db_session):
-    token, _admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_venue_patch_missing",
-        "venuepatchmissing@example.com",
-        "Admin",
+async def test_patch_nonexistent_venue_returns_404(
+    client, make_clerk_token, db_session, make_admin
+):
+    token, _admin_id = await make_admin(
+        "user_venue_patch_missing", "venuepatchmissing@example.com", "Admin"
     )
 
     response = await client.patch(
@@ -226,14 +210,11 @@ async def test_patch_nonexistent_venue_returns_404(client, make_clerk_token, db_
     assert response.status_code == 404
 
 
-async def test_patch_venue_updates_fields_and_sets_updated_by(client, make_clerk_token, db_session):
-    token, admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_venue_patch_admin",
-        "venuepatchadmin@example.com",
-        "Admin",
+async def test_patch_venue_updates_fields_and_sets_updated_by(
+    client, make_clerk_token, db_session, make_admin
+):
+    token, admin_id = await make_admin(
+        "user_venue_patch_admin", "venuepatchadmin@example.com", "Admin"
     )
     create_response = await client.post(
         "/venues",
@@ -255,14 +236,9 @@ async def test_patch_venue_updates_fields_and_sets_updated_by(client, make_clerk
     assert body["updated_by"] == admin_id
 
 
-async def test_patch_venue_can_clear_image_url(client, make_clerk_token, db_session):
-    token, _admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_venue_patch_clear",
-        "venuepatchclear@example.com",
-        "Admin",
+async def test_patch_venue_can_clear_image_url(client, make_clerk_token, db_session, make_admin):
+    token, _admin_id = await make_admin(
+        "user_venue_patch_clear", "venuepatchclear@example.com", "Admin"
     )
     create_response = await client.post(
         "/venues",
@@ -291,14 +267,11 @@ async def test_delete_venue_without_token_returns_401(client):
     assert response.status_code == 401
 
 
-async def test_delete_venue_as_non_admin_returns_403(client, make_clerk_token, db_session):
-    token, _admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_venue_delete_owner",
-        "venuedeleteowner@example.com",
-        "Admin",
+async def test_delete_venue_as_non_admin_returns_403(
+    client, make_clerk_token, db_session, make_admin
+):
+    token, _admin_id = await make_admin(
+        "user_venue_delete_owner", "venuedeleteowner@example.com", "Admin"
     )
     create_response = await client.post(
         "/venues",
@@ -321,14 +294,11 @@ async def test_delete_venue_as_non_admin_returns_403(client, make_clerk_token, d
     assert response.status_code == 403
 
 
-async def test_delete_nonexistent_venue_returns_404(client, make_clerk_token, db_session):
-    token, _admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_venue_delete_missing",
-        "venuedeletemissing@example.com",
-        "Admin",
+async def test_delete_nonexistent_venue_returns_404(
+    client, make_clerk_token, db_session, make_admin
+):
+    token, _admin_id = await make_admin(
+        "user_venue_delete_missing", "venuedeletemissing@example.com", "Admin"
     )
 
     response = await client.delete("/venues/999999", headers={"Authorization": f"Bearer {token}"})
@@ -336,14 +306,9 @@ async def test_delete_nonexistent_venue_returns_404(client, make_clerk_token, db
     assert response.status_code == 404
 
 
-async def test_delete_venue_soft_deletes(client, make_clerk_token, db_session):
-    token, _admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_venue_delete_admin",
-        "venuedeleteadmin@example.com",
-        "Admin",
+async def test_delete_venue_soft_deletes(client, make_clerk_token, db_session, make_admin):
+    token, _admin_id = await make_admin(
+        "user_venue_delete_admin", "venuedeleteadmin@example.com", "Admin"
     )
     create_response = await client.post(
         "/venues",

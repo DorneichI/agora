@@ -1,21 +1,6 @@
 from app.models import Team
 
 
-async def _make_admin(client, make_clerk_token, db_session, clerk_id, email, name):
-    token = make_clerk_token(clerk_id=clerk_id, email=email, name=name)
-    me_response = await client.get("/me", headers={"Authorization": f"Bearer {token}"})
-    user_id = me_response.json()["id"]
-
-    from app.models import User
-
-    user = await db_session.get(User, user_id)
-    user.role = "admin"
-    db_session.add(user)
-    await db_session.commit()
-
-    return token, user_id
-
-
 async def test_create_team_without_token_returns_401(client):
     response = await client.post(
         "/teams", json={"name": "Crimson", "school": "Harvard", "mascot": "Crimson"}
@@ -39,10 +24,10 @@ async def test_create_team_as_non_admin_returns_403(client, make_clerk_token):
     assert response.status_code == 403
 
 
-async def test_create_team_as_admin_sets_created_by(client, make_clerk_token, db_session):
-    token, admin_id = await _make_admin(
-        client, make_clerk_token, db_session, "user_team_admin", "teamadmin@example.com", "Admin"
-    )
+async def test_create_team_as_admin_sets_created_by(
+    client, make_clerk_token, db_session, make_admin
+):
+    token, admin_id = await make_admin("user_team_admin", "teamadmin@example.com", "Admin")
 
     response = await client.post(
         "/teams",
@@ -78,15 +63,8 @@ async def test_get_team_without_token_returns_401(client):
     assert response.status_code == 401
 
 
-async def test_get_team_as_non_admin_succeeds(client, make_clerk_token, db_session):
-    token, _admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_team_get_admin",
-        "teamgetadmin@example.com",
-        "Admin",
-    )
+async def test_get_team_as_non_admin_succeeds(client, make_clerk_token, db_session, make_admin):
+    token, _admin_id = await make_admin("user_team_get_admin", "teamgetadmin@example.com", "Admin")
     create_response = await client.post(
         "/teams",
         json={"name": "Elis", "school": "Yale", "mascot": "Bulldogs"},
@@ -115,15 +93,8 @@ async def test_get_nonexistent_team_returns_404(client, make_clerk_token):
     assert response.status_code == 404
 
 
-async def test_get_soft_deleted_team_returns_404(client, make_clerk_token, db_session):
-    token, _admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_team_softdel",
-        "teamsoftdel@example.com",
-        "Admin",
-    )
+async def test_get_soft_deleted_team_returns_404(client, make_clerk_token, db_session, make_admin):
+    token, _admin_id = await make_admin("user_team_softdel", "teamsoftdel@example.com", "Admin")
     create_response = await client.post(
         "/teams",
         json={"name": "Disbanded", "school": "Nowhere", "mascot": "Ghosts"},
@@ -146,10 +117,10 @@ async def test_list_teams_without_token_returns_401(client):
     assert response.status_code == 401
 
 
-async def test_list_teams_returns_all_active_teams(client, make_clerk_token, db_session):
-    token, _admin_id = await _make_admin(
-        client, make_clerk_token, db_session, "user_team_lister", "teamlister@example.com", "Admin"
-    )
+async def test_list_teams_returns_all_active_teams(
+    client, make_clerk_token, db_session, make_admin
+):
+    token, _admin_id = await make_admin("user_team_lister", "teamlister@example.com", "Admin")
     await client.post(
         "/teams",
         json={"name": "Crimson", "school": "Harvard", "mascot": "Crimson"},
@@ -168,20 +139,39 @@ async def test_list_teams_returns_all_active_teams(client, make_clerk_token, db_
     assert {"Crimson", "Elis"} <= names
 
 
+async def test_list_teams_excludes_soft_deleted_teams(client, db_session, make_admin):
+    token, _admin_id = await make_admin(
+        "user_team_list_softdel", "teamlistsoftdel@example.com", "Admin"
+    )
+    create_response = await client.post(
+        "/teams",
+        json={"name": "Ghosted", "school": "Nowhere", "mascot": "Phantoms"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    team_id = create_response.json()["id"]
+
+    team = await db_session.get(Team, team_id)
+    await db_session.delete(team)
+    await db_session.commit()
+
+    response = await client.get("/teams", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    names = {t["name"] for t in response.json()}
+    assert "Ghosted" not in names
+
+
 async def test_patch_team_without_token_returns_401(client):
     response = await client.patch("/teams/1", json={"name": "New Name"})
 
     assert response.status_code == 401
 
 
-async def test_patch_team_as_non_admin_returns_403(client, make_clerk_token, db_session):
-    token, _admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_team_patch_owner",
-        "teampatchowner@example.com",
-        "Admin",
+async def test_patch_team_as_non_admin_returns_403(
+    client, make_clerk_token, db_session, make_admin
+):
+    token, _admin_id = await make_admin(
+        "user_team_patch_owner", "teampatchowner@example.com", "Admin"
     )
     create_response = await client.post(
         "/teams",
@@ -204,14 +194,9 @@ async def test_patch_team_as_non_admin_returns_403(client, make_clerk_token, db_
     assert response.status_code == 403
 
 
-async def test_patch_nonexistent_team_returns_404(client, make_clerk_token, db_session):
-    token, _admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_team_patch_missing",
-        "teampatchmissing@example.com",
-        "Admin",
+async def test_patch_nonexistent_team_returns_404(client, make_clerk_token, db_session, make_admin):
+    token, _admin_id = await make_admin(
+        "user_team_patch_missing", "teampatchmissing@example.com", "Admin"
     )
 
     response = await client.patch(
@@ -223,14 +208,11 @@ async def test_patch_nonexistent_team_returns_404(client, make_clerk_token, db_s
     assert response.status_code == 404
 
 
-async def test_patch_team_updates_fields_and_sets_updated_by(client, make_clerk_token, db_session):
-    token, admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_team_patch_admin",
-        "teampatchadmin@example.com",
-        "Admin",
+async def test_patch_team_updates_fields_and_sets_updated_by(
+    client, make_clerk_token, db_session, make_admin
+):
+    token, admin_id = await make_admin(
+        "user_team_patch_admin", "teampatchadmin@example.com", "Admin"
     )
     create_response = await client.post(
         "/teams",
@@ -252,14 +234,9 @@ async def test_patch_team_updates_fields_and_sets_updated_by(client, make_clerk_
     assert body["updated_by"] == admin_id
 
 
-async def test_patch_team_can_clear_image_url(client, make_clerk_token, db_session):
-    token, _admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_team_patch_clear",
-        "teampatchclear@example.com",
-        "Admin",
+async def test_patch_team_can_clear_image_url(client, make_clerk_token, db_session, make_admin):
+    token, _admin_id = await make_admin(
+        "user_team_patch_clear", "teampatchclear@example.com", "Admin"
     )
     create_response = await client.post(
         "/teams",
@@ -289,14 +266,11 @@ async def test_delete_team_without_token_returns_401(client):
     assert response.status_code == 401
 
 
-async def test_delete_team_as_non_admin_returns_403(client, make_clerk_token, db_session):
-    token, _admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_team_delete_owner",
-        "teamdeleteowner@example.com",
-        "Admin",
+async def test_delete_team_as_non_admin_returns_403(
+    client, make_clerk_token, db_session, make_admin
+):
+    token, _admin_id = await make_admin(
+        "user_team_delete_owner", "teamdeleteowner@example.com", "Admin"
     )
     create_response = await client.post(
         "/teams",
@@ -319,14 +293,11 @@ async def test_delete_team_as_non_admin_returns_403(client, make_clerk_token, db
     assert response.status_code == 403
 
 
-async def test_delete_nonexistent_team_returns_404(client, make_clerk_token, db_session):
-    token, _admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_team_delete_missing",
-        "teamdeletemissing@example.com",
-        "Admin",
+async def test_delete_nonexistent_team_returns_404(
+    client, make_clerk_token, db_session, make_admin
+):
+    token, _admin_id = await make_admin(
+        "user_team_delete_missing", "teamdeletemissing@example.com", "Admin"
     )
 
     response = await client.delete("/teams/999999", headers={"Authorization": f"Bearer {token}"})
@@ -334,14 +305,9 @@ async def test_delete_nonexistent_team_returns_404(client, make_clerk_token, db_
     assert response.status_code == 404
 
 
-async def test_delete_team_soft_deletes(client, make_clerk_token, db_session):
-    token, _admin_id = await _make_admin(
-        client,
-        make_clerk_token,
-        db_session,
-        "user_team_delete_admin",
-        "teamdeleteadmin@example.com",
-        "Admin",
+async def test_delete_team_soft_deletes(client, make_clerk_token, db_session, make_admin):
+    token, _admin_id = await make_admin(
+        "user_team_delete_admin", "teamdeleteadmin@example.com", "Admin"
     )
     create_response = await client.post(
         "/teams",
