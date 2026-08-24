@@ -107,6 +107,52 @@ cp "$work/env5" "$work/env5.orig"
 "$sync_script" "$work/example5" "$work/env5" > /dev/null
 assert_eq "backup matches pre-merge contents" "$(cat "$work/env5.orig")" "$(cat "$work/env5.bak")"
 
+# A fresh linked worktree with no local env file seeds values from the same
+# file at the main checkout's root, falling back to the example's
+# placeholder for any key the main checkout's file doesn't have either.
+repo="$work/repo6"
+mkdir -p "$repo"
+git -C "$repo" init -q
+git -C "$repo" config user.email test@example.com
+git -C "$repo" config user.name "Test"
+cat > "$repo/example6" <<'EOF'
+FOO=example-foo
+BAR=example-bar
+EOF
+cat > "$repo/env6" <<'EOF'
+FOO=main-checkout-foo
+EOF
+git -C "$repo" add example6 env6
+git -C "$repo" commit -q -m "init"
+worktree="$work/repo6-worktree"
+git -C "$repo" worktree add -q "$worktree" -b wt6-branch > /dev/null
+rm -f "$worktree/env6"
+
+out6="$(cd "$worktree" && "$sync_script" example6 env6)"
+assert_eq "worktree seeds value from main checkout's env file" "main-checkout-foo" "$(grep '^FOO=' "$worktree/env6" | cut -d= -f2-)"
+assert_eq "worktree falls back to placeholder for key absent from main checkout's env" "example-bar" "$(grep '^BAR=' "$worktree/env6" | cut -d= -f2-)"
+assert_contains "output mentions seeding from the main checkout" "$out6" "main checkout"
+assert_true "no backup file when seeding into a nonexistent env file" "$([ ! -f "$worktree/env6.bak" ] && echo true || echo false)"
+
+# Same worktree setup, but the main checkout has no env file either: behaves
+# exactly like the plain "no existing env file" case (falls back to the
+# example's placeholders throughout, no seeding).
+repo7="$work/repo7"
+mkdir -p "$repo7"
+git -C "$repo7" init -q
+git -C "$repo7" config user.email test@example.com
+git -C "$repo7" config user.name "Test"
+cat > "$repo7/example7" <<'EOF'
+FOO=example-foo
+EOF
+git -C "$repo7" add example7
+git -C "$repo7" commit -q -m "init"
+worktree7="$work/repo7-worktree"
+git -C "$repo7" worktree add -q "$worktree7" -b wt7-branch > /dev/null
+
+(cd "$worktree7" && "$sync_script" example7 env7 > /dev/null)
+assert_eq "no seed available falls back to example placeholder" "example-foo" "$(grep '^FOO=' "$worktree7/env7" | cut -d= -f2-)"
+
 echo ""
 echo "Passed: $pass, Failed: $fail"
 if [ "$fail" -gt 0 ]; then

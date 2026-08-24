@@ -175,6 +175,13 @@ permanent and Codecov's free tier only covers public repos.
   the old file before overwriting.
 - `.env.bak` gets the exact same protection as `.env`: git-ignored (via the existing `.env.*`
   pattern in `.gitignore`) and blocked at the tool-permission level in `.claude/settings.json`.
+- **Fresh git worktrees** (`git worktree add`, or an agent's `EnterWorktree`) share this repo's
+  history but never get git-ignored files — a new worktree has no `.env` at all. `npm run sync-env`
+  handles this too: when the target `.env` doesn't exist yet and the current directory is a linked
+  worktree, it seeds values from the same-named file at the main checkout's root before falling
+  back to `.env.example`'s placeholders for anything the main checkout's file doesn't have either.
+  Since `.env` is blocked from every AI-tool code path (Bash included — not just Read/Edit/Write),
+  this command still has to be run by a human, not the agent working in that worktree.
 - A dedicated secrets manager (e.g. Doppler, Infisical, 1Password CLI) was considered instead of
   this script and explicitly deferred — this project is small/early-stage, prod hosting isn't
   chosen yet, and whichever host is picked will likely provide its own per-environment secret
