@@ -76,6 +76,12 @@ jobs:
       - name: Compute coverage percentage
         run: |
           pct=$(jq -r '.totals.percent_covered' coverage.json)
+          case "$pct" in
+            ''|*[!0-9.]*)
+              echo "::error::backend coverage.json produced a non-numeric percentage: '$pct'"
+              exit 1
+              ;;
+          esac
           echo "BACKEND_COVERAGE=$pct" >> "$GITHUB_ENV"
       - name: Check coverage ratchet
         if: github.event_name == 'pull_request'
@@ -127,6 +133,12 @@ jobs:
       - name: Compute coverage percentage
         run: |
           pct=$(jq -r '.total.lines.pct' coverage/coverage-summary.json)
+          case "$pct" in
+            ''|*[!0-9.]*)
+              echo "::error::web coverage-summary.json produced a non-numeric percentage: '$pct'"
+              exit 1
+              ;;
+          esac
           echo "WEB_COVERAGE=$pct" >> "$GITHUB_ENV"
       - name: Check coverage ratchet
         if: github.event_name == 'pull_request'
