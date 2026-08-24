@@ -3,6 +3,11 @@
 # adds new keys from the example as placeholders, and drops keys the
 # example no longer declares. See docs/superpowers/specs (design) and
 # CLAUDE.md's Secrets section.
+#
+# If the env file doesn't exist yet and we're in a linked git worktree, seeds
+# values from the same-named file at the main checkout's root first -- a
+# fresh worktree never has git-ignored files like .env, so without this a
+# worktree would otherwise only ever get .env.example's placeholders.
 set -euo pipefail
 
 example_file="${1:-.env.example}"
@@ -20,6 +25,22 @@ if [ -f "$env_file" ]; then
   env_exists=1
 fi
 
+seed_file=""
+if [ "$env_exists" -eq 0 ]; then
+  this_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  common_dir="$(git rev-parse --git-common-dir 2>/dev/null || true)"
+  if [ -n "$this_root" ] && [ -n "$common_dir" ]; then
+    main_root="$(cd "$(dirname "$common_dir")" && pwd -P)"
+    this_root_abs="$(cd "$this_root" && pwd -P)"
+    if [ "$main_root" != "$this_root_abs" ]; then
+      candidate="$main_root/$(basename "$env_file")"
+      if [ -f "$candidate" ]; then
+        seed_file="$candidate"
+      fi
+    fi
+  fi
+fi
+
 tmp_out="$(mktemp)"
 trap 'rm -f "$tmp_out"' EXIT
 
@@ -35,6 +56,11 @@ while IFS= read -r line || [ -n "$line" ]; do
       existing_value="$(grep "^${key}=" "$env_file" | tail -n1)"
       existing_value="${existing_value#*=}"
       echo "${key}=${existing_value}" >> "$tmp_out"
+      carried+=("$key")
+    elif [ -n "$seed_file" ] && grep -q "^${key}=" "$seed_file"; then
+      seeded_value="$(grep "^${key}=" "$seed_file" | tail -n1)"
+      seeded_value="${seeded_value#*=}"
+      echo "${key}=${seeded_value}" >> "$tmp_out"
       carried+=("$key")
     else
       echo "${key}=${example_value}" >> "$tmp_out"
@@ -59,6 +85,10 @@ if [ "$env_exists" -eq 1 ]; then
 fi
 
 cp "$tmp_out" "$env_file"
+
+if [ -n "$seed_file" ]; then
+  echo "No local ${env_file} found -- seeded ${#carried[@]} value(s) from the main checkout's ${seed_file}."
+fi
 
 if [ "${#added[@]}" -gt 0 ]; then
   echo "Added (placeholder values from ${example_file} -- fill these in):"
