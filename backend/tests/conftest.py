@@ -12,6 +12,7 @@ from sqlmodel import SQLModel
 from app.clerk import CLERK_ISSUER, _jwk_client
 from app.db import engine, get_session
 from app.main import app
+from app.models import User
 
 
 @pytest_asyncio.fixture
@@ -73,3 +74,20 @@ def make_clerk_token(_rsa_keypair):
         return jwt.encode(payload, private_key, algorithm="RS256")
 
     return _make
+
+
+@pytest.fixture
+def make_admin(client, make_clerk_token, db_session):
+    async def _make_admin(clerk_id, email, name):
+        token = make_clerk_token(clerk_id=clerk_id, email=email, name=name)
+        me_response = await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+        user_id = me_response.json()["id"]
+
+        user = await db_session.get(User, user_id)
+        user.role = "admin"
+        db_session.add(user)
+        await db_session.commit()
+
+        return token, user_id
+
+    return _make_admin
