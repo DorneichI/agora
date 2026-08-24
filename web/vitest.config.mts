@@ -7,5 +7,8 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./vitest.setup.ts"],
     exclude: ["node_modules/**", ".next/**", "e2e/**"],
+    coverage: {
+      reporter: ["text", "json-summary", "json"],
+    },
   },
 });
