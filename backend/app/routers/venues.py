@@ -51,3 +51,44 @@ async def list_venues(
     session: AsyncSession = Depends(get_session),
 ) -> list[Venue]:
     return list((await session.execute(select(Venue))).scalars().all())
+
+
+class VenueUpdate(SQLModel):
+    name: str | None = None
+    location: str | None = None
+    image_url: str | None = None
+
+
+@router.patch("/venues/{venue_id}", response_model=VenueRead)
+async def update_venue(
+    venue_id: int,
+    body: VenueUpdate,
+    user: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> Venue:
+    venue = (await session.execute(select(Venue).where(Venue.id == venue_id))).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Venue not found")
+
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(venue, field, value)
+    venue.updated_by = user.id
+
+    session.add(venue)
+    await session.commit()
+    await session.refresh(venue)
+    return venue
+
+
+@router.delete("/venues/{venue_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_venue(
+    venue_id: int,
+    user: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    venue = (await session.execute(select(Venue).where(Venue.id == venue_id))).scalar_one_or_none()
+    if venue is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Venue not found")
+
+    await session.delete(venue)
+    await session.commit()
