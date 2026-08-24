@@ -17,7 +17,7 @@ async def _validate_venue_id(venue_id: int | None, session: AsyncSession) -> Non
     venue = (await session.execute(select(Venue).where(Venue.id == venue_id))).scalar_one_or_none()
     if venue is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="venue_id does not reference an existing Venue",
         )
 

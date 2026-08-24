@@ -13,7 +13,7 @@ async def _validate_event_id(event_id: int, session: AsyncSession) -> None:
     event = (await session.execute(select(Event).where(Event.id == event_id))).scalar_one_or_none()
     if event is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="event_id does not reference an existing Event",
         )
 
