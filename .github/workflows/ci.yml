@@ -2,6 +2,8 @@ name: CI
 
 on:
   pull_request:
+  push:
+    branches: [main]
 
 jobs:
   changes:
@@ -9,6 +11,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       web: ${{ steps.filter.outputs.web }}
+      scripts: ${{ steps.filter.outputs.scripts }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -19,6 +22,8 @@ jobs:
               - 'backend/**'
             web:
               - 'web/**'
+            scripts:
+              - 'scripts/**'
 
   backend:
     needs: changes
@@ -52,8 +57,15 @@ jobs:
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run ruff format --check .
+      - name: Restore coverage baseline
+        uses: actions/cache/restore@v4
+        with:
+          path: backend/.coverage-baseline
+          key: backend-coverage-baseline-${{ github.sha }}
+          restore-keys: |
+            backend-coverage-baseline-
       - name: Run tests with coverage
-        run: uv run pytest --cov=app --cov-report=term-missing | tee coverage.txt
+        run: uv run pytest --cov=app --cov-report=term-missing --cov-report=json | tee coverage.txt
       - name: Append coverage to job summary
         if: always()
         run: |
@@ -61,6 +73,22 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           cat coverage.txt >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - name: Compute coverage percentage
+        run: |
+          pct=$(jq -r '.totals.percent_covered' coverage.json)
+          echo "BACKEND_COVERAGE=$pct" >> "$GITHUB_ENV"
+      - name: Check coverage ratchet
+        if: github.event_name == 'pull_request'
+        run: bash ../scripts/check-coverage-ratchet.sh backend "$BACKEND_COVERAGE" .coverage-baseline
+      - name: Save coverage baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: echo "$BACKEND_COVERAGE" > .coverage-baseline
+      - name: Cache coverage baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: backend/.coverage-baseline
+          key: backend-coverage-baseline-${{ github.sha }}
 
   web:
     needs: changes
@@ -80,6 +108,13 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run format:check
+      - name: Restore coverage baseline
+        uses: actions/cache/restore@v4
+        with:
+          path: web/.coverage-baseline
+          key: web-coverage-baseline-${{ github.sha }}
+          restore-keys: |
+            web-coverage-baseline-
       - name: Run tests with coverage
         run: npm run test -- --coverage | tee coverage.txt
       - name: Append coverage to job summary
@@ -89,15 +124,40 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           cat coverage.txt >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - name: Compute coverage percentage
+        run: |
+          pct=$(jq -r '.total.lines.pct' coverage/coverage-summary.json)
+          echo "WEB_COVERAGE=$pct" >> "$GITHUB_ENV"
+      - name: Check coverage ratchet
+        if: github.event_name == 'pull_request'
+        run: bash ../scripts/check-coverage-ratchet.sh web "$WEB_COVERAGE" .coverage-baseline
+      - name: Save coverage baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: echo "$WEB_COVERAGE" > .coverage-baseline
+      - name: Cache coverage baseline
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: web/.coverage-baseline
+          key: web-coverage-baseline-${{ github.sha }}
+
+  scripts:
+    needs: changes
+    if: needs.changes.outputs.scripts == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: npm run test:coverage-ratchet
+      - run: npm run test:sync-env
 
   ci-status:
-    needs: [changes, backend, web]
+    needs: [changes, backend, web, scripts]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Check job results
         run: |
-          if [ "${{ needs.backend.result }}" = "failure" ] || [ "${{ needs.web.result }}" = "failure" ]; then
+          if [ "${{ needs.backend.result }}" = "failure" ] || [ "${{ needs.web.result }}" = "failure" ] || [ "${{ needs.scripts.result }}" = "failure" ]; then
             echo "A required job failed."
             exit 1
           fi
