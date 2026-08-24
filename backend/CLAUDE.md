@@ -59,6 +59,19 @@ uv run alembic revision --autogenerate -m "..."  # generate a migration from mod
 `DATABASE_URL` (see root `.env.example`) is read by both the app and Alembic's `env.py` — the
 `alembic.ini` placeholder value is never used for anything real.
 
+**Promoting a user to admin**: there's no admin signup flow — an already-provisioned user (one
+who has logged in via Clerk at least once, so their `User` row exists) is promoted by email via a
+one-off script:
+
+```bash
+uv run python -m scripts.promote_admin <email>
+```
+
+Run as `-m scripts.promote_admin`, not `python scripts/promote_admin.py` — the latter puts
+`scripts/` itself on `sys.path` instead of `backend/`, so the script's `from app...` imports fail
+with `ModuleNotFoundError`. It only flips `role` on an existing row; it never creates a `User`, and
+fails clearly (non-zero exit) if the email has no match.
+
 **Local dev gotcha**: `pytest` creates/drops all tables directly via `SQLModel.metadata` (see
 `tests/conftest.py`'s `db_session` fixture) against the same local Postgres Alembic tracks —
 it doesn't go through Alembic at all. Running the test suite locally leaves the schema empty while
@@ -76,6 +89,10 @@ by `alembic upgrade head` (re-runs every migration from scratch).
   index scoped to `WHERE deleted_at IS NULL`.
 - No hand-rolled password storage — auth identity comes from Clerk (see
   `docs/architecture.md#auth`); the backend only verifies Clerk-issued JWTs.
+- **Authorization**: `User.role` is a plain `str` (`"user"` | `"admin"`, default `"user"`) — no DB
+  enum, no Clerk Organizations/Roles. Gate a route to admins only with `Depends(require_admin)`
+  (`app/deps.py`, layered on top of `get_current_user`) rather than checking `user.role` inline in
+  the route body.
 - **Response schemas**: never use a table model directly as a route's `response_model` — pair
   every table with a `*Read` SQLModel (e.g. `UserRead`, `LeagueRead`) that excludes
   `SoftDeleteMixin`'s bookkeeping columns (`created_at`/`updated_at`/`deleted_at`) from the API

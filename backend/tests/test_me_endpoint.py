@@ -45,6 +45,7 @@ async def test_me_creates_user_on_first_call(client, make_clerk_token, db_sessio
     assert body["clerk_id"] == "user_new"
     assert body["email"] == "new@example.com"
     assert body["display_name"] == "New Rower"
+    assert body["role"] == "user"
 
     rows = (
         (await db_session.execute(select(User).where(User.clerk_id == "user_new"))).scalars().all()
