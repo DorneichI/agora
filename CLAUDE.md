@@ -126,6 +126,30 @@ manual). Actual signed mobile release builds (TestFlight/Play) are a separate, m
 workflow, not part of this check. See `.github/workflows/ci.yml` for the actual workflow (added by
 [issue #3](https://github.com/DorneichI/agora/issues/3), now closed).
 
+### Coverage ratchet
+
+CI fails a pull request if `backend/` or `web/` aggregate test coverage drops relative to
+`main`, rather than enforcing a fixed percentage (tracked in
+[issue #25](https://github.com/DorneichI/agora/issues/25)). This is self-hosted, not
+an external service like Codecov — deliberately, since this repo's public status isn't guaranteed
+permanent and Codecov's free tier only covers public repos.
+
+- Each package computes a single coverage percentage per CI run (`pytest-cov`'s
+  `--cov-report=json` for `backend/`, `vitest`'s `json-summary` coverage reporter for `web/`).
+- On every push to `main`, that percentage is saved to a GitHub Actions cache entry
+  (`<pkg>-coverage-baseline-<sha>`). On every pull request, the most recent entry for that prefix
+  is restored and compared against, via `scripts/check-coverage-ratchet.sh`.
+- A 0.5 percentage-point tolerance absorbs rounding noise between runs.
+- If no baseline exists yet (first run ever, or the cache entry aged out after 7 days unused),
+  the check passes without blocking — it only enforces "don't regress" once it has prior data.
+- If the coverage tool's JSON output ever doesn't contain a numeric percentage at the expected key
+  (e.g. a `pytest-cov`/`vitest` version bump changes the JSON shape), CI fails loudly right there,
+  before caching anything — this stops a bad value from silently becoming the new baseline and
+  breaking the ratchet for every subsequent PR.
+- **Known limitation**: this ratchets *aggregate* coverage %, not true line-by-line diff/patch
+  coverage the way Codecov does — it can theoretically be gamed by adding a large well-covered
+  file in the same PR as untested new code. Accepted trade-off for avoiding an external service.
+
 ## Environments
 
 - Two tiers beyond local dev: **staging** and **prod**. No preprod for now — can be added later

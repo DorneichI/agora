@@ -7,6 +7,7 @@
   "scripts": {
     "prepare": "lefthook install",
     "sync-env": "bash scripts/sync-env.sh",
-    "test:sync-env": "bash scripts/test-sync-env.sh"
+    "test:sync-env": "bash scripts/test-sync-env.sh",
+    "test:coverage-ratchet": "bash scripts/test-check-coverage-ratchet.sh"
   }
 }

@@ -11,6 +11,8 @@ __pycache__/
 *.egg-info/
 backend/.coverage
 backend/coverage.txt
+backend/coverage.json
+backend/.coverage-baseline
 
 # Node (web/)
 node_modules/
@@ -25,6 +27,7 @@ web/next-env.d.ts
 web/tsconfig.tsbuildinfo
 web/coverage/
 web/coverage.txt
+web/.coverage-baseline
 
 # Flutter/Dart (mobile/)
 .dart_tool/
