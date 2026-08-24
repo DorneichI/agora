@@ -30,3 +30,11 @@ async def test_duplicate_active_email_rejected(db_session):
     db_session.add(User(clerk_id="user_2", email="dup@example.com", display_name="B"))
     with pytest.raises(IntegrityError):
         await db_session.commit()
+
+
+async def test_user_defaults_to_role_user(db_session):
+    user = User(clerk_id="user_role_default", email="default@example.com", display_name="Default")
+    db_session.add(user)
+    await db_session.commit()
+
+    assert user.role == "user"

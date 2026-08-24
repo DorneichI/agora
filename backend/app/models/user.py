@@ -8,6 +8,7 @@ class User(SoftDeleteMixin, table=True):
     clerk_id: str = Field()
     email: str = Field()
     display_name: str = Field()
+    role: str = Field(default="user")
 
     __table_args__ = (
         Index(
@@ -36,3 +37,4 @@ class UserRead(SQLModel):
     clerk_id: str
     email: str
     display_name: str
+    role: str
