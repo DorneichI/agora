@@ -142,6 +142,10 @@ permanent and Codecov's free tier only covers public repos.
 - A 0.5 percentage-point tolerance absorbs rounding noise between runs.
 - If no baseline exists yet (first run ever, or the cache entry aged out after 7 days unused),
   the check passes without blocking — it only enforces "don't regress" once it has prior data.
+- If the coverage tool's JSON output ever doesn't contain a numeric percentage at the expected key
+  (e.g. a `pytest-cov`/`vitest` version bump changes the JSON shape), CI fails loudly right there,
+  before caching anything — this stops a bad value from silently becoming the new baseline and
+  breaking the ratchet for every subsequent PR.
 - **Known limitation**: this ratchets *aggregate* coverage %, not true line-by-line diff/patch
   coverage the way Codecov does — it can theoretically be gamed by adding a large well-covered
   file in the same PR as untested new code. Accepted trade-off for avoiding an external service.
