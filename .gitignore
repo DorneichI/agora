@@ -11,6 +11,7 @@ __pycache__/
 *.egg-info/
 backend/.coverage
 backend/coverage.txt
+backend/coverage.json
 
 # Node (web/)
 node_modules/
