@@ -18,6 +18,10 @@ class LeagueCreate(SQLModel):
     name: str
 
 
+class TransferOwnershipRequest(SQLModel):
+    new_owner_id: int
+
+
 @router.post("/leagues", response_model=LeagueRead)
 async def create_league(
     body: LeagueCreate,
@@ -176,3 +180,29 @@ async def kick_member(
 
     await session.delete(membership)
     await session.commit()
+
+
+@router.post("/leagues/{league_id}/owner", response_model=LeagueRead)
+async def transfer_ownership(
+    league_id: int,
+    body: TransferOwnershipRequest,
+    league: League = Depends(require_league_owner),
+    session: AsyncSession = Depends(get_session),
+) -> League:
+    if body.new_owner_id == league.owner_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="User is already the owner"
+        )
+
+    membership = await get_active_league_membership(session, league_id, body.new_owner_id)
+    if membership is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    league.owner_id = body.new_owner_id
+    session.add(league)
+    if membership.role != "admin":
+        membership.role = "admin"
+        session.add(membership)
+    await session.commit()
+    await session.refresh(league)
+    return league

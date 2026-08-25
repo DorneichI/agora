@@ -872,3 +872,123 @@ async def test_kick_nonmember_returns_404(client, make_clerk_token):
     )
 
     assert response.status_code == 404
+
+
+async def test_transfer_ownership_without_token_returns_401(client):
+    response = await client.post("/leagues/1/owner", json={"new_owner_id": 1})
+
+    assert response.status_code == 401
+
+
+async def test_transfer_ownership_by_non_owner_returns_403(client, make_clerk_token):
+    owner_token = make_clerk_token(
+        clerk_id="user_transfer_403_owner", email="transfer403owner@example.com", name="Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Transfer 403 League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    member_token = make_clerk_token(
+        clerk_id="user_transfer_403_member", email="transfer403member@example.com", name="Member"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {member_token}"}
+    )
+    member_id = (
+        await client.get("/me", headers={"Authorization": f"Bearer {member_token}"})
+    ).json()["id"]
+
+    response = await client.post(
+        f"/leagues/{league_id}/owner",
+        json={"new_owner_id": member_id},
+        headers={"Authorization": f"Bearer {member_token}"},
+    )
+
+    assert response.status_code == 403
+
+
+async def test_transfer_ownership_to_member_succeeds(client, make_clerk_token, db_session):
+    owner_token = make_clerk_token(
+        clerk_id="user_transfer_ok_owner", email="transferokowner@example.com", name="Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Transfer OK League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    member_token = make_clerk_token(
+        clerk_id="user_transfer_ok_member", email="transferokmember@example.com", name="Member"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {member_token}"}
+    )
+    member_id = (
+        await client.get("/me", headers={"Authorization": f"Bearer {member_token}"})
+    ).json()["id"]
+
+    response = await client.post(
+        f"/leagues/{league_id}/owner",
+        json={"new_owner_id": member_id},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["owner_id"] == member_id
+
+    league = await db_session.get(League, league_id)
+    assert league.owner_id == member_id
+
+    membership = (
+        await db_session.execute(
+            select(LeagueUser).where(
+                LeagueUser.league_id == league_id, LeagueUser.user_id == member_id
+            )
+        )
+    ).scalar_one()
+    assert membership.role == "admin"
+
+
+async def test_transfer_ownership_to_nonmember_returns_404(client, make_clerk_token):
+    owner_token = make_clerk_token(
+        clerk_id="user_transfer_404_owner", email="transfer404owner@example.com", name="Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Transfer 404 League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    response = await client.post(
+        f"/leagues/{league_id}/owner",
+        json={"new_owner_id": 999999},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 404
+
+
+async def test_transfer_ownership_to_self_returns_409(client, make_clerk_token):
+    owner_token = make_clerk_token(
+        clerk_id="user_transfer_409_owner", email="transfer409owner@example.com", name="Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Transfer 409 League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+    owner_id = create_response.json()["created_by"]
+
+    response = await client.post(
+        f"/leagues/{league_id}/owner",
+        json={"new_owner_id": owner_id},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 409
