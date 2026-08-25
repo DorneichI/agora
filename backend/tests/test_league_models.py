@@ -4,12 +4,28 @@ from sqlalchemy.exc import IntegrityError
 from app.models import League, LeagueUser, User
 
 
+async def test_leagueuser_role_defaults_to_member(db_session):
+    creator = User(clerk_id="user_lu_role", email="lurole@example.com", display_name="LU Role")
+    db_session.add(creator)
+    await db_session.commit()
+
+    league = League(name="Role Default League", created_by=creator.id, owner_id=creator.id)
+    db_session.add(league)
+    await db_session.commit()
+
+    membership = LeagueUser(league_id=league.id, user_id=creator.id)
+    db_session.add(membership)
+    await db_session.commit()
+
+    assert membership.role == "member"
+
+
 async def test_league_has_soft_delete_fields_and_created_by(db_session):
     creator = User(clerk_id="user_league_owner", email="owner@example.com", display_name="Owner")
     db_session.add(creator)
     await db_session.commit()
 
-    league = League(name="Head of the Charles", created_by=creator.id)
+    league = League(name="Head of the Charles", created_by=creator.id, owner_id=creator.id)
     db_session.add(league)
     await db_session.commit()
 
@@ -17,6 +33,7 @@ async def test_league_has_soft_delete_fields_and_created_by(db_session):
     assert league.created_at is not None
     assert league.deleted_at is None
     assert league.created_by == creator.id
+    assert league.owner_id == creator.id
 
 
 async def test_leagueuser_links_league_and_user(db_session):
@@ -24,7 +41,7 @@ async def test_leagueuser_links_league_and_user(db_session):
     db_session.add(creator)
     await db_session.commit()
 
-    league = League(name="Boston Sprints", created_by=creator.id)
+    league = League(name="Boston Sprints", created_by=creator.id, owner_id=creator.id)
     db_session.add(league)
     await db_session.commit()
 
@@ -41,7 +58,7 @@ async def test_duplicate_active_membership_rejected(db_session):
     db_session.add(creator)
     await db_session.commit()
 
-    league = League(name="Charles River Regatta", created_by=creator.id)
+    league = League(name="Charles River Regatta", created_by=creator.id, owner_id=creator.id)
     db_session.add(league)
     await db_session.commit()
 
@@ -58,7 +75,7 @@ async def test_rejoin_after_leave_allowed_by_partial_index(db_session):
     db_session.add(creator)
     await db_session.commit()
 
-    league = League(name="Rowing Classic", created_by=creator.id)
+    league = League(name="Rowing Classic", created_by=creator.id, owner_id=creator.id)
     db_session.add(league)
     await db_session.commit()
 

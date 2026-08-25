@@ -1,5 +1,5 @@
 from app.models.event import Event, EventRead
-from app.models.league import League, LeagueRead, LeagueUser
+from app.models.league import League, LeagueRead, LeagueUser, LeagueUserRead
 from app.models.race import Race, RaceRead
 from app.models.race_entry import RaceEntry, RaceEntryRead
 from app.models.team import Team, TeamRead
@@ -12,6 +12,7 @@ __all__ = [
     "League",
     "LeagueRead",
     "LeagueUser",
+    "LeagueUserRead",
     "Race",
     "RaceEntry",
     "RaceEntryRead",
