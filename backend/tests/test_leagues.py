@@ -1235,11 +1235,12 @@ async def test_patch_league_settings_policy_admins_only_allows_admin(client, mak
         f"/leagues/{league_id}/admins/{admin_id}",
         headers={"Authorization": f"Bearer {owner_token}"},
     )
-    await client.patch(
+    setup_response = await client.patch(
         f"/leagues/{league_id}",
         json={"settings_policy": "admins_only"},
         headers={"Authorization": f"Bearer {owner_token}"},
     )
+    assert setup_response.status_code == 200
 
     response = await client.patch(
         f"/leagues/{league_id}",
@@ -1264,11 +1265,12 @@ async def test_patch_league_settings_policy_admins_only_still_blocks_plain_membe
     )
     league_id = create_response.json()["id"]
 
-    await client.patch(
+    setup_response = await client.patch(
         f"/leagues/{league_id}",
         json={"settings_policy": "admins_only"},
         headers={"Authorization": f"Bearer {owner_token}"},
     )
+    assert setup_response.status_code == 200
 
     member_token, _member_id = await make_user(
         "user_patch_ao_member", "patchaomember@example.com", "Member"
@@ -1310,11 +1312,12 @@ async def test_patch_league_non_owner_cannot_change_settings_policy_even_under_a
         f"/leagues/{league_id}/admins/{admin_id}",
         headers={"Authorization": f"Bearer {owner_token}"},
     )
-    await client.patch(
+    setup_response = await client.patch(
         f"/leagues/{league_id}",
         json={"settings_policy": "admins_only"},
         headers={"Authorization": f"Bearer {owner_token}"},
     )
+    assert setup_response.status_code == 200
 
     response = await client.patch(
         f"/leagues/{league_id}",
@@ -1353,3 +1356,39 @@ async def test_patch_league_owner_combines_settings_policy_and_visibility_in_one
     league = await db_session.get(League, league_id)
     assert league.settings_policy == "admins_only"
     assert league.visibility == "public"
+
+
+async def test_patch_league_owner_can_change_settings_policy_alone(client, make_user, db_session):
+    token, _creator_id = await make_user(
+        "user_patch_sp_alone", "patchspalone@example.com", "Patch SP Alone"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Patch Settings Policy Alone League"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    response = await client.patch(
+        f"/leagues/{league_id}",
+        json={"settings_policy": "admins_only"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["settings_policy"] == "admins_only"
+
+    league = await db_session.get(League, league_id)
+    assert league.settings_policy == "admins_only"
+
+
+async def test_patch_nonexistent_league_returns_404(client, make_user):
+    token, _creator_id = await make_user("user_patch_404", "patch404@example.com", "Patch 404")
+
+    response = await client.patch(
+        "/leagues/999999",
+        json={"visibility": "public"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
