@@ -8,6 +8,9 @@ class League(SoftDeleteMixin, table=True):
     name: str = Field()
     created_by: int = Field(foreign_key="user.id")
     owner_id: int = Field(foreign_key="user.id")
+    visibility: str = Field(default="private")
+    invite_policy: str = Field(default="owner_only")
+    settings_policy: str = Field(default="owner_only")
 
 
 class LeagueUser(SoftDeleteMixin, table=True):
@@ -31,6 +34,9 @@ class LeagueRead(SQLModel):
     name: str
     created_by: int
     owner_id: int
+    visibility: str
+    invite_policy: str
+    settings_policy: str
 
 
 class LeagueUserRead(SQLModel):

@@ -72,7 +72,15 @@ async def test_create_league_response_excludes_internal_fields(client, make_user
     )
 
     body = response.json()
-    assert set(body.keys()) == {"id", "name", "created_by", "owner_id"}
+    assert set(body.keys()) == {
+        "id",
+        "name",
+        "created_by",
+        "owner_id",
+        "visibility",
+        "invite_policy",
+        "settings_policy",
+    }
 
 
 async def test_get_league_without_token_returns_401(client):
@@ -95,7 +103,15 @@ async def test_get_league_returns_created_league(client, make_user):
     assert get_response.status_code == 200
     body = get_response.json()
     assert body["name"] == "Boston Sprints"
-    assert set(body.keys()) == {"id", "name", "created_by", "owner_id"}
+    assert set(body.keys()) == {
+        "id",
+        "name",
+        "created_by",
+        "owner_id",
+        "visibility",
+        "invite_policy",
+        "settings_policy",
+    }
 
 
 async def test_get_nonexistent_league_returns_404(client, make_user):
