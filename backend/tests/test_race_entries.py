@@ -488,3 +488,21 @@ async def test_delete_race_entry_allows_recreating_same_race_and_team(client, ma
 
     assert response.status_code == 200
     assert response.json()["id"] != entry_id
+
+
+async def test_patch_race_entry_with_empty_body_does_not_set_updated_by(client, make_admin):
+    token, _admin_id = await make_admin("user_re_patch_noop", "repatchnoop@example.com", "Admin")
+    race_id, team_id = await _create_race_and_team(client, token)
+    create_response = await client.post(
+        "/race-entries",
+        json={"race_id": race_id, "team_id": team_id, "level": "varsity"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    entry_id = create_response.json()["id"]
+
+    response = await client.patch(
+        f"/race-entries/{entry_id}", json={}, headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["updated_by"] is None

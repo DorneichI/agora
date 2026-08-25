@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, select
 
+from app.crud_helpers import assert_not_referenced, get_or_404
 from app.db import get_session
 from app.deps import get_current_user, require_admin
-from app.models import Team, TeamRead, User
+from app.models import RaceEntry, Team, TeamRead, User
 
 router = APIRouter()
 
@@ -31,7 +32,6 @@ async def create_team(
     )
     session.add(team)
     await session.commit()
-    await session.refresh(team)
     return team
 
 
@@ -41,10 +41,7 @@ async def get_team(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> Team:
-    team = (await session.execute(select(Team).where(Team.id == team_id))).scalar_one_or_none()
-    if team is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
-    return team
+    return await get_or_404(session, Team, team_id)
 
 
 @router.get("/teams", response_model=list[TeamRead])
@@ -69,17 +66,15 @@ async def update_team(
     user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> Team:
-    team = (await session.execute(select(Team).where(Team.id == team_id))).scalar_one_or_none()
-    if team is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+    team = await get_or_404(session, Team, team_id)
 
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(team, field, value)
-    team.updated_by = user.id
-
-    session.add(team)
-    await session.commit()
-    await session.refresh(team)
+    updates = body.model_dump(exclude_unset=True)
+    if updates:
+        for field, value in updates.items():
+            setattr(team, field, value)
+        team.updated_by = user.id
+        session.add(team)
+        await session.commit()
     return team
 
 
@@ -89,9 +84,8 @@ async def delete_team(
     user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> None:
-    team = (await session.execute(select(Team).where(Team.id == team_id))).scalar_one_or_none()
-    if team is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+    team = await get_or_404(session, Team, team_id)
+    await assert_not_referenced(session, RaceEntry, "team_id", team_id, "Team")
 
     await session.delete(team)
     await session.commit()

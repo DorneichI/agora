@@ -337,3 +337,58 @@ async def test_delete_race_soft_deletes(client, db_session, make_admin):
         )
     ).scalar_one()
     assert row.deleted_at is not None
+
+
+async def test_patch_race_with_empty_body_does_not_set_updated_by(client, make_admin):
+    token, _admin_id = await make_admin(
+        "user_race_patch_noop", "racepatchnoop@example.com", "Admin"
+    )
+    event_id = await _create_event(client, token)
+    create_response = await client.post(
+        "/races",
+        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    race_id = create_response.json()["id"]
+
+    response = await client.patch(
+        f"/races/{race_id}", json={}, headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["updated_by"] is None
+
+
+async def test_delete_race_with_active_race_entry_returns_409(client, make_admin):
+    token, _admin_id = await make_admin(
+        "user_race_delete_referenced", "racedeletereferenced@example.com", "Admin"
+    )
+    event_id = await _create_event(client, token)
+    create_response = await client.post(
+        "/races",
+        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    race_id = create_response.json()["id"]
+    team_response = await client.post(
+        "/teams",
+        json={"name": "Crimson", "school": "Harvard", "mascot": "Crimson"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    team_id = team_response.json()["id"]
+    await client.post(
+        "/race-entries",
+        json={"race_id": race_id, "team_id": team_id, "level": "varsity"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    response = await client.delete(
+        f"/races/{race_id}", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 409
+
+    get_response = await client.get(
+        f"/races/{race_id}", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert get_response.status_code == 200

@@ -336,3 +336,57 @@ async def test_delete_venue_soft_deletes(client, make_clerk_token, db_session, m
         )
     ).scalar_one()
     assert row.deleted_at is not None
+
+
+async def test_patch_venue_with_empty_body_does_not_set_updated_by(client, make_admin):
+    token, _admin_id = await make_admin(
+        "user_venue_patch_noop", "venuepatchnoop@example.com", "Admin"
+    )
+    create_response = await client.post(
+        "/venues",
+        json={"name": "Red Top", "location": "Ledyard, CT"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    venue_id = create_response.json()["id"]
+
+    response = await client.patch(
+        f"/venues/{venue_id}", json={}, headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["updated_by"] is None
+
+
+async def test_delete_venue_with_active_event_returns_409(client, make_admin):
+    token, _admin_id = await make_admin(
+        "user_venue_delete_referenced", "venuedeletereferenced@example.com", "Admin"
+    )
+    venue_response = await client.post(
+        "/venues",
+        json={"name": "Red Top", "location": "Ledyard, CT"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    venue_id = venue_response.json()["id"]
+    await client.post(
+        "/events",
+        json={
+            "name": "Head of the Charles",
+            "description": "Fall regatta on the Charles River",
+            "venue_id": venue_id,
+            "format": "regatta",
+            "start_date": "2026-10-17",
+            "end_date": "2026-10-18",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    response = await client.delete(
+        f"/venues/{venue_id}", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 409
+
+    get_response = await client.get(
+        f"/venues/{venue_id}", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert get_response.status_code == 200

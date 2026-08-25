@@ -335,3 +335,68 @@ async def test_delete_team_soft_deletes(client, make_clerk_token, db_session, ma
         )
     ).scalar_one()
     assert row.deleted_at is not None
+
+
+async def test_patch_team_with_empty_body_does_not_set_updated_by(client, make_admin):
+    token, _admin_id = await make_admin(
+        "user_team_patch_noop", "teampatchnoop@example.com", "Admin"
+    )
+    create_response = await client.post(
+        "/teams",
+        json={"name": "Crimson", "school": "Harvard", "mascot": "Crimson"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    team_id = create_response.json()["id"]
+
+    response = await client.patch(
+        f"/teams/{team_id}", json={}, headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["updated_by"] is None
+
+
+async def test_delete_team_with_active_race_entry_returns_409(client, make_admin):
+    token, _admin_id = await make_admin(
+        "user_team_delete_referenced", "teamdeletereferenced@example.com", "Admin"
+    )
+    team_response = await client.post(
+        "/teams",
+        json={"name": "Crimson", "school": "Harvard", "mascot": "Crimson"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    team_id = team_response.json()["id"]
+    event_response = await client.post(
+        "/events",
+        json={
+            "name": "Head of the Charles",
+            "description": "Fall regatta on the Charles River",
+            "format": "regatta",
+            "start_date": "2026-10-17",
+            "end_date": "2026-10-18",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    event_id = event_response.json()["id"]
+    race_response = await client.post(
+        "/races",
+        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    race_id = race_response.json()["id"]
+    await client.post(
+        "/race-entries",
+        json={"race_id": race_id, "team_id": team_id, "level": "varsity"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    response = await client.delete(
+        f"/teams/{team_id}", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 409
+
+    get_response = await client.get(
+        f"/teams/{team_id}", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert get_response.status_code == 200

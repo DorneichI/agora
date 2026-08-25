@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, select
 
+from app.crud_helpers import assert_not_referenced, get_or_404
 from app.db import get_session
 from app.deps import get_current_user, require_admin
-from app.models import User, Venue, VenueRead
+from app.models import Event, User, Venue, VenueRead
 
 router = APIRouter()
 
@@ -29,7 +30,6 @@ async def create_venue(
     )
     session.add(venue)
     await session.commit()
-    await session.refresh(venue)
     return venue
 
 
@@ -39,10 +39,7 @@ async def get_venue(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> Venue:
-    venue = (await session.execute(select(Venue).where(Venue.id == venue_id))).scalar_one_or_none()
-    if venue is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Venue not found")
-    return venue
+    return await get_or_404(session, Venue, venue_id)
 
 
 @router.get("/venues", response_model=list[VenueRead])
@@ -66,17 +63,15 @@ async def update_venue(
     user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> Venue:
-    venue = (await session.execute(select(Venue).where(Venue.id == venue_id))).scalar_one_or_none()
-    if venue is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Venue not found")
+    venue = await get_or_404(session, Venue, venue_id)
 
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(venue, field, value)
-    venue.updated_by = user.id
-
-    session.add(venue)
-    await session.commit()
-    await session.refresh(venue)
+    updates = body.model_dump(exclude_unset=True)
+    if updates:
+        for field, value in updates.items():
+            setattr(venue, field, value)
+        venue.updated_by = user.id
+        session.add(venue)
+        await session.commit()
     return venue
 
 
@@ -86,9 +81,8 @@ async def delete_venue(
     user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> None:
-    venue = (await session.execute(select(Venue).where(Venue.id == venue_id))).scalar_one_or_none()
-    if venue is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Venue not found")
+    venue = await get_or_404(session, Venue, venue_id)
+    await assert_not_referenced(session, Event, "venue_id", venue_id, "Venue")
 
     await session.delete(venue)
     await session.commit()

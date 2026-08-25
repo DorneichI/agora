@@ -1,21 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, select
 
+from app.crud_helpers import assert_not_referenced, get_or_404, validate_fk_exists
 from app.db import get_session
 from app.deps import get_current_user, require_admin
-from app.models import Event, Race, RaceRead, User
+from app.models import Event, Race, RaceEntry, RaceRead, User
 
 router = APIRouter()
 
 
 async def _validate_event_id(event_id: int, session: AsyncSession) -> None:
-    event = (await session.execute(select(Event).where(Event.id == event_id))).scalar_one_or_none()
-    if event is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="event_id does not reference an existing Event",
-        )
+    await validate_fk_exists(session, Event, event_id, "event_id")
 
 
 class RaceCreate(SQLModel):
@@ -42,7 +38,6 @@ async def create_race(
     )
     session.add(race)
     await session.commit()
-    await session.refresh(race)
     return race
 
 
@@ -52,10 +47,7 @@ async def get_race(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> Race:
-    race = (await session.execute(select(Race).where(Race.id == race_id))).scalar_one_or_none()
-    if race is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Race not found")
-    return race
+    return await get_or_404(session, Race, race_id)
 
 
 @router.get("/races", response_model=list[RaceRead])
@@ -79,17 +71,15 @@ async def update_race(
     user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> Race:
-    race = (await session.execute(select(Race).where(Race.id == race_id))).scalar_one_or_none()
-    if race is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Race not found")
+    race = await get_or_404(session, Race, race_id)
 
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(race, field, value)
-    race.updated_by = user.id
-
-    session.add(race)
-    await session.commit()
-    await session.refresh(race)
+    updates = body.model_dump(exclude_unset=True)
+    if updates:
+        for field, value in updates.items():
+            setattr(race, field, value)
+        race.updated_by = user.id
+        session.add(race)
+        await session.commit()
     return race
 
 
@@ -99,9 +89,8 @@ async def delete_race(
     user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> None:
-    race = (await session.execute(select(Race).where(Race.id == race_id))).scalar_one_or_none()
-    if race is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Race not found")
+    race = await get_or_404(session, Race, race_id)
+    await assert_not_referenced(session, RaceEntry, "race_id", race_id, "Race")
 
     await session.delete(race)
     await session.commit()

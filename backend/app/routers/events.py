@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, select
 
+from app.crud_helpers import assert_not_referenced, get_or_404, validate_fk_exists
 from app.db import get_session
 from app.deps import get_current_user, require_admin
-from app.models import Event, EventRead, User, Venue
+from app.models import Event, EventRead, Race, User, Venue
 
 router = APIRouter()
 
@@ -14,11 +15,14 @@ router = APIRouter()
 async def _validate_venue_id(venue_id: int | None, session: AsyncSession) -> None:
     if venue_id is None:
         return
-    venue = (await session.execute(select(Venue).where(Venue.id == venue_id))).scalar_one_or_none()
-    if venue is None:
+    await validate_fk_exists(session, Venue, venue_id, "venue_id")
+
+
+def _validate_date_range(start_date: date, end_date: date) -> None:
+    if start_date > end_date:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="venue_id does not reference an existing Venue",
+            detail="start_date must not be after end_date",
         )
 
 
@@ -39,6 +43,7 @@ async def create_event(
     session: AsyncSession = Depends(get_session),
 ) -> Event:
     await _validate_venue_id(body.venue_id, session)
+    _validate_date_range(body.start_date, body.end_date)
 
     event = Event(
         name=body.name,
@@ -52,7 +57,6 @@ async def create_event(
     )
     session.add(event)
     await session.commit()
-    await session.refresh(event)
     return event
 
 
@@ -62,10 +66,7 @@ async def get_event(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> Event:
-    event = (await session.execute(select(Event).where(Event.id == event_id))).scalar_one_or_none()
-    if event is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
-    return event
+    return await get_or_404(session, Event, event_id)
 
 
 @router.get("/events", response_model=list[EventRead])
@@ -93,21 +94,22 @@ async def update_event(
     user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> Event:
-    event = (await session.execute(select(Event).where(Event.id == event_id))).scalar_one_or_none()
-    if event is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+    event = await get_or_404(session, Event, event_id)
 
     updates = body.model_dump(exclude_unset=True)
     if "venue_id" in updates:
         await _validate_venue_id(updates["venue_id"], session)
+    if "start_date" in updates or "end_date" in updates:
+        effective_start = updates.get("start_date", event.start_date)
+        effective_end = updates.get("end_date", event.end_date)
+        _validate_date_range(effective_start, effective_end)
 
-    for field, value in updates.items():
-        setattr(event, field, value)
-    event.updated_by = user.id
-
-    session.add(event)
-    await session.commit()
-    await session.refresh(event)
+    if updates:
+        for field, value in updates.items():
+            setattr(event, field, value)
+        event.updated_by = user.id
+        session.add(event)
+        await session.commit()
     return event
 
 
@@ -117,9 +119,8 @@ async def delete_event(
     user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> None:
-    event = (await session.execute(select(Event).where(Event.id == event_id))).scalar_one_or_none()
-    if event is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+    event = await get_or_404(session, Event, event_id)
+    await assert_not_referenced(session, Race, "event_id", event_id, "Event")
 
     await session.delete(event)
     await session.commit()
