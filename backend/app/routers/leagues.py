@@ -93,6 +93,12 @@ async def leave_league(
     if league is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="League not found")
 
+    if league.owner_id == user.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The owner must transfer ownership before leaving the league",
+        )
+
     membership = (
         await session.execute(
             select(LeagueUser).where(

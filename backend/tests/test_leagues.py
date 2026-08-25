@@ -284,16 +284,21 @@ async def test_leave_nonexistent_league_returns_404(client, make_clerk_token):
 
 
 async def test_leave_league_soft_deletes_membership(client, make_clerk_token, db_session):
-    token = make_clerk_token(
-        clerk_id="user_leave_member", email="leavemember@example.com", name="Leave Member"
+    creator_token = make_clerk_token(
+        clerk_id="user_leave_creator", email="leavecreator@example.com", name="Creator"
     )
     create_response = await client.post(
         "/leagues",
         json={"name": "Leave Test League"},
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {creator_token}"},
     )
     league_id = create_response.json()["id"]
-    member_id = create_response.json()["created_by"]
+
+    token = make_clerk_token(
+        clerk_id="user_leave_member", email="leavemember@example.com", name="Leave Member"
+    )
+    await client.post(f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {token}"})
+    member_id = (await client.get("/me", headers={"Authorization": f"Bearer {token}"})).json()["id"]
 
     leave_response = await client.post(
         f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {token}"}
@@ -1040,3 +1045,105 @@ async def test_transfer_ownership_to_self_returns_409(client, make_clerk_token):
     )
 
     assert response.status_code == 409
+
+
+async def test_owner_leave_without_transfer_returns_409(client, make_clerk_token):
+    owner_token = make_clerk_token(
+        clerk_id="user_leave_owner_409", email="leaveowner409@example.com", name="Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Leave Owner League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    response = await client.post(
+        f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {owner_token}"}
+    )
+
+    assert response.status_code == 409
+
+
+async def test_owner_leave_as_sole_member_returns_409(client, make_clerk_token):
+    """Same check as above, named explicitly for the AC's 'even when they're the only member'
+    case -- there's no separate code path for it (owner_id doesn't depend on member count), but
+    this pins that behavior against a future regression that adds member-counting logic."""
+    owner_token = make_clerk_token(
+        clerk_id="user_leave_sole_409", email="leavesole409@example.com", name="Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Sole Member League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    response = await client.post(
+        f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {owner_token}"}
+    )
+
+    assert response.status_code == 409
+
+
+async def test_owner_can_leave_after_transferring(client, make_clerk_token):
+    owner_token = make_clerk_token(
+        clerk_id="user_leave_after_transfer_owner",
+        email="leaveaftertransferowner@example.com",
+        name="Owner",
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Leave After Transfer League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    member_token = make_clerk_token(
+        clerk_id="user_leave_after_transfer_member",
+        email="leaveaftertransfermember@example.com",
+        name="Member",
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {member_token}"}
+    )
+    member_id = (
+        await client.get("/me", headers={"Authorization": f"Bearer {member_token}"})
+    ).json()["id"]
+
+    await client.post(
+        f"/leagues/{league_id}/owner",
+        json={"new_owner_id": member_id},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    response = await client.post(
+        f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {owner_token}"}
+    )
+
+    assert response.status_code == 204
+
+
+async def test_non_owner_member_can_still_leave_freely(client, make_clerk_token):
+    owner_token = make_clerk_token(
+        clerk_id="user_leave_free_owner", email="leavefreeowner@example.com", name="Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Leave Freely League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    member_token = make_clerk_token(
+        clerk_id="user_leave_free_member", email="leavefreemember@example.com", name="Member"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {member_token}"}
+    )
+
+    response = await client.post(
+        f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {member_token}"}
+    )
+
+    assert response.status_code == 204
