@@ -375,3 +375,76 @@ async def test_delete_event_soft_deletes(client, db_session, make_admin):
         )
     ).scalar_one()
     assert row.deleted_at is not None
+
+
+async def test_create_event_with_start_date_after_end_date_returns_422(client, make_admin):
+    token, _admin_id = await make_admin("user_event_baddates", "eventbaddates@example.com", "Admin")
+
+    response = await client.post(
+        "/events",
+        json={**EVENT_PAYLOAD, "start_date": "2026-10-18", "end_date": "2026-10-17"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422
+
+
+async def test_patch_event_end_date_before_existing_start_date_returns_422(client, make_admin):
+    token, _admin_id = await make_admin(
+        "user_event_patch_baddates", "eventpatchbaddates@example.com", "Admin"
+    )
+    create_response = await client.post(
+        "/events", json=EVENT_PAYLOAD, headers={"Authorization": f"Bearer {token}"}
+    )
+    event_id = create_response.json()["id"]
+
+    response = await client.patch(
+        f"/events/{event_id}",
+        json={"end_date": "2026-10-16"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422
+
+
+async def test_patch_event_with_empty_body_does_not_set_updated_by(client, make_admin):
+    token, _admin_id = await make_admin(
+        "user_event_patch_noop", "eventpatchnoop@example.com", "Admin"
+    )
+    create_response = await client.post(
+        "/events", json=EVENT_PAYLOAD, headers={"Authorization": f"Bearer {token}"}
+    )
+    event_id = create_response.json()["id"]
+
+    response = await client.patch(
+        f"/events/{event_id}", json={}, headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["updated_by"] is None
+
+
+async def test_delete_event_with_active_race_returns_409(client, make_admin):
+    token, _admin_id = await make_admin(
+        "user_event_delete_referenced", "eventdeletereferenced@example.com", "Admin"
+    )
+    create_response = await client.post(
+        "/events", json=EVENT_PAYLOAD, headers={"Authorization": f"Bearer {token}"}
+    )
+    event_id = create_response.json()["id"]
+    await client.post(
+        "/races",
+        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    response = await client.delete(
+        f"/events/{event_id}", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 409
+
+    get_response = await client.get(
+        f"/events/{event_id}", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert get_response.status_code == 200

@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, select
 
+from app.crud_helpers import get_or_404, validate_fk_exists
 from app.db import get_session
 from app.deps import get_current_user, require_admin
 from app.models import Race, RaceEntry, RaceEntryRead, Team, User
@@ -15,21 +16,11 @@ RaceEntryStatus = Literal["finished", "dnf", "dns", "dq"]
 
 
 async def _validate_race_id(race_id: int, session: AsyncSession) -> None:
-    race = (await session.execute(select(Race).where(Race.id == race_id))).scalar_one_or_none()
-    if race is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="race_id does not reference an existing Race",
-        )
+    await validate_fk_exists(session, Race, race_id, "race_id")
 
 
 async def _validate_team_id(team_id: int, session: AsyncSession) -> None:
-    team = (await session.execute(select(Team).where(Team.id == team_id))).scalar_one_or_none()
-    if team is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="team_id does not reference an existing Team",
-        )
+    await validate_fk_exists(session, Team, team_id, "team_id")
 
 
 class RaceEntryCreate(SQLModel):
@@ -66,7 +57,6 @@ async def create_race_entry(
             status_code=status.HTTP_409_CONFLICT,
             detail="An active RaceEntry already exists for this race_id and team_id",
         ) from exc
-    await session.refresh(race_entry)
     return race_entry
 
 
@@ -76,12 +66,7 @@ async def get_race_entry(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> RaceEntry:
-    race_entry = (
-        await session.execute(select(RaceEntry).where(RaceEntry.id == race_entry_id))
-    ).scalar_one_or_none()
-    if race_entry is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="RaceEntry not found")
-    return race_entry
+    return await get_or_404(session, RaceEntry, race_entry_id)
 
 
 @router.get("/race-entries", response_model=list[RaceEntryRead])
@@ -105,19 +90,15 @@ async def update_race_entry(
     user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> RaceEntry:
-    race_entry = (
-        await session.execute(select(RaceEntry).where(RaceEntry.id == race_entry_id))
-    ).scalar_one_or_none()
-    if race_entry is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="RaceEntry not found")
+    race_entry = await get_or_404(session, RaceEntry, race_entry_id)
 
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(race_entry, field, value)
-    race_entry.updated_by = user.id
-
-    session.add(race_entry)
-    await session.commit()
-    await session.refresh(race_entry)
+    updates = body.model_dump(exclude_unset=True)
+    if updates:
+        for field, value in updates.items():
+            setattr(race_entry, field, value)
+        race_entry.updated_by = user.id
+        session.add(race_entry)
+        await session.commit()
     return race_entry
 
 
@@ -127,11 +108,7 @@ async def delete_race_entry(
     user: User = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> None:
-    race_entry = (
-        await session.execute(select(RaceEntry).where(RaceEntry.id == race_entry_id))
-    ).scalar_one_or_none()
-    if race_entry is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="RaceEntry not found")
+    race_entry = await get_or_404(session, RaceEntry, race_entry_id)
 
     await session.delete(race_entry)
     await session.commit()
