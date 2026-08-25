@@ -7,7 +7,7 @@ from app.models import Event, Race, RaceEntry, Team, User
 
 
 async def _make_creator(db_session, clerk_id, email):
-    creator = User(clerk_id=clerk_id, email=email, display_name="Owner")
+    creator = User(clerk_id=clerk_id, email=email)
     db_session.add(creator)
     await db_session.commit()
     return creator

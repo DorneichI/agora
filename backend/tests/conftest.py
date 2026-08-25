@@ -85,9 +85,27 @@ def make_admin(client, make_clerk_token, db_session):
 
         user = await db_session.get(User, user_id)
         user.role = "admin"
+        user.username = f"user{user_id}"
         db_session.add(user)
         await db_session.commit()
 
         return token, user_id
 
     return _make_admin
+
+
+@pytest.fixture
+def make_user(client, make_clerk_token, db_session):
+    async def _make_user(clerk_id, email, name):
+        token = make_clerk_token(clerk_id=clerk_id, email=email, name=name)
+        me_response = await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+        user_id = me_response.json()["id"]
+
+        user = await db_session.get(User, user_id)
+        user.username = f"user{user_id}"
+        db_session.add(user)
+        await db_session.commit()
+
+        return token, user_id
+
+    return _make_user

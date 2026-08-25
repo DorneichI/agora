@@ -1,4 +1,4 @@
-from app.models import Event
+from app.models import Event, User
 
 EVENT_PAYLOAD = {
     "name": "Head of the Charles",
@@ -20,6 +20,32 @@ async def test_create_event_as_non_admin_returns_403(client, make_clerk_token):
         clerk_id="user_event_nonadmin", email="eventnonadmin@example.com", name="Non Admin"
     )
     await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    response = await client.post(
+        "/events", json=EVENT_PAYLOAD, headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 403
+
+
+async def test_create_event_as_admin_without_username_returns_403(
+    client, make_clerk_token, db_session
+):
+    """require_admin cascades through require_username (backend/CLAUDE.md's authorization
+    convention) -- an admin who hasn't set a username yet must still be blocked, not
+    exempted just because they hold the admin role."""
+    token = make_clerk_token(
+        clerk_id="user_event_admin_no_username",
+        email="eventadminnousername@example.com",
+        name="Admin No Username",
+    )
+    me_response = await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+    user_id = me_response.json()["id"]
+
+    user = await db_session.get(User, user_id)
+    user.role = "admin"
+    db_session.add(user)
+    await db_session.commit()
 
     response = await client.post(
         "/events", json=EVENT_PAYLOAD, headers={"Authorization": f"Bearer {token}"}
@@ -101,7 +127,18 @@ async def test_get_event_without_token_returns_401(client):
     assert response.status_code == 401
 
 
-async def test_get_event_as_non_admin_succeeds(client, make_clerk_token, make_admin):
+async def test_get_event_without_username_returns_403(client, make_clerk_token):
+    token = make_clerk_token(
+        clerk_id="user_event_no_username", email="eventnousername@example.com", name="No Username"
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    response = await client.get("/events/1", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 403
+
+
+async def test_get_event_as_non_admin_succeeds(client, make_user, make_admin):
     token, _admin_id = await make_admin(
         "user_event_get_admin", "eventgetadmin@example.com", "Admin"
     )
@@ -110,8 +147,8 @@ async def test_get_event_as_non_admin_succeeds(client, make_clerk_token, make_ad
     )
     event_id = create_response.json()["id"]
 
-    reader_token = make_clerk_token(
-        clerk_id="user_event_reader", email="eventreader@example.com", name="Reader"
+    reader_token, _reader_id = await make_user(
+        "user_event_reader", "eventreader@example.com", "Reader"
     )
     response = await client.get(
         f"/events/{event_id}", headers={"Authorization": f"Bearer {reader_token}"}
@@ -121,10 +158,8 @@ async def test_get_event_as_non_admin_succeeds(client, make_clerk_token, make_ad
     assert response.json()["name"] == "Head of the Charles"
 
 
-async def test_get_nonexistent_event_returns_404(client, make_clerk_token):
-    token = make_clerk_token(
-        clerk_id="user_event_missing", email="eventmissing@example.com", name="Missing"
-    )
+async def test_get_nonexistent_event_returns_404(client, make_user):
+    token, _user_id = await make_user("user_event_missing", "eventmissing@example.com", "Missing")
 
     response = await client.get("/events/999999", headers={"Authorization": f"Bearer {token}"})
 

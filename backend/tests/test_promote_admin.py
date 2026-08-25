@@ -6,7 +6,7 @@ from scripts.promote_admin import UserNotFoundError, promote_to_admin
 
 
 async def test_promote_to_admin_sets_role_on_existing_user(db_session):
-    user = User(clerk_id="user_promote", email="promote@example.com", display_name="Promote Me")
+    user = User(clerk_id="user_promote", email="promote@example.com")
     db_session.add(user)
     await db_session.commit()
 

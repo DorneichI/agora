@@ -2,7 +2,7 @@ from app.models import Team, User, Venue
 
 
 async def test_team_has_soft_delete_fields_and_created_by(db_session):
-    creator = User(clerk_id="user_team_owner", email="teamowner@example.com", display_name="Owner")
+    creator = User(clerk_id="user_team_owner", email="teamowner@example.com")
     db_session.add(creator)
     await db_session.commit()
 
@@ -19,7 +19,7 @@ async def test_team_has_soft_delete_fields_and_created_by(db_session):
 
 
 async def test_team_accepts_optional_image_url(db_session):
-    creator = User(clerk_id="user_team_img", email="teamimg@example.com", display_name="Owner")
+    creator = User(clerk_id="user_team_img", email="teamimg@example.com")
     db_session.add(creator)
     await db_session.commit()
 
@@ -37,9 +37,7 @@ async def test_team_accepts_optional_image_url(db_session):
 
 
 async def test_venue_has_soft_delete_fields_and_created_by(db_session):
-    creator = User(
-        clerk_id="user_venue_owner", email="venueowner@example.com", display_name="Owner"
-    )
+    creator = User(clerk_id="user_venue_owner", email="venueowner@example.com")
     db_session.add(creator)
     await db_session.commit()
 

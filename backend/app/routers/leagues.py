@@ -5,9 +5,9 @@ from sqlmodel import SQLModel, select
 from app.db import get_session
 from app.deps import (
     get_active_league_membership,
-    get_current_user,
     require_league_admin,
     require_league_owner,
+    require_username,
 )
 from app.models import League, LeagueRead, LeagueUser, LeagueUserRead, User
 
@@ -25,7 +25,7 @@ class TransferOwnershipRequest(SQLModel):
 @router.post("/leagues", response_model=LeagueRead)
 async def create_league(
     body: LeagueCreate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> League:
     league = League(name=body.name, created_by=user.id, owner_id=user.id)
@@ -41,7 +41,7 @@ async def create_league(
 @router.get("/leagues/{league_id}", response_model=LeagueRead)
 async def get_league(
     league_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> League:
     league = (
@@ -55,7 +55,7 @@ async def get_league(
 @router.post("/leagues/{league_id}/join", status_code=status.HTTP_204_NO_CONTENT)
 async def join_league(
     league_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> None:
     league = (
@@ -84,7 +84,7 @@ async def join_league(
 @router.post("/leagues/{league_id}/leave", status_code=status.HTTP_204_NO_CONTENT)
 async def leave_league(
     league_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> None:
     league = (
@@ -117,6 +117,7 @@ async def promote_to_admin(
     league_id: int,
     user_id: int,
     league: League = Depends(require_league_admin),
+    user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> LeagueUser:
     membership = await get_active_league_membership(session, league_id, user_id)
@@ -137,6 +138,7 @@ async def demote_admin(
     league_id: int,
     user_id: int,
     league: League = Depends(require_league_owner),
+    user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> LeagueUser:
     membership = await get_active_league_membership(session, league_id, user_id)
@@ -162,7 +164,7 @@ async def kick_member(
     league_id: int,
     user_id: int,
     league: League = Depends(require_league_admin),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> None:
     if user_id == user.id:
@@ -193,6 +195,7 @@ async def transfer_ownership(
     league_id: int,
     body: TransferOwnershipRequest,
     league: League = Depends(require_league_owner),
+    user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> League:
     if body.new_owner_id == league.owner_id:
