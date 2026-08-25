@@ -29,6 +29,7 @@ async def test_create_league_creates_league_and_membership(client, make_clerk_to
     )
     assert len(league_rows) == 1
     assert league_rows[0].created_by == body["created_by"]
+    assert league_rows[0].owner_id == body["created_by"]
 
     membership_rows = (
         (await db_session.execute(select(LeagueUser).where(LeagueUser.league_id == body["id"])))
@@ -37,6 +38,7 @@ async def test_create_league_creates_league_and_membership(client, make_clerk_to
     )
     assert len(membership_rows) == 1
     assert membership_rows[0].user_id == body["created_by"]
+    assert membership_rows[0].role == "admin"
 
 
 async def test_create_league_response_excludes_internal_fields(client, make_clerk_token):
@@ -53,7 +55,7 @@ async def test_create_league_response_excludes_internal_fields(client, make_cler
     )
 
     body = response.json()
-    assert set(body.keys()) == {"id", "name", "created_by"}
+    assert set(body.keys()) == {"id", "name", "created_by", "owner_id"}
 
 
 async def test_get_league_without_token_returns_401(client):
@@ -78,7 +80,7 @@ async def test_get_league_returns_created_league(client, make_clerk_token):
     assert get_response.status_code == 200
     body = get_response.json()
     assert body["name"] == "Boston Sprints"
-    assert set(body.keys()) == {"id", "name", "created_by"}
+    assert set(body.keys()) == {"id", "name", "created_by", "owner_id"}
 
 
 async def test_get_nonexistent_league_returns_404(client, make_clerk_token):

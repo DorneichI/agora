@@ -19,11 +19,11 @@ async def create_league(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> League:
-    league = League(name=body.name, created_by=user.id)
+    league = League(name=body.name, created_by=user.id, owner_id=user.id)
     session.add(league)
     await session.flush()
 
-    session.add(LeagueUser(league_id=league.id, user_id=user.id))
+    session.add(LeagueUser(league_id=league.id, user_id=user.id, role="admin"))
     await session.commit()
     await session.refresh(league)
     return league
