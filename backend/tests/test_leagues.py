@@ -953,6 +953,54 @@ async def test_transfer_ownership_to_member_succeeds(client, make_clerk_token, d
     assert membership.role == "admin"
 
 
+async def test_transfer_ownership_to_existing_admin_succeeds(client, make_clerk_token, db_session):
+    owner_token = make_clerk_token(
+        clerk_id="user_transfer_admin_owner",
+        email="transferadminowner@example.com",
+        name="Owner",
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Transfer Admin League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    admin_token = make_clerk_token(
+        clerk_id="user_transfer_admin_target",
+        email="transferadmintarget@example.com",
+        name="Admin",
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    admin_id = (await client.get("/me", headers={"Authorization": f"Bearer {admin_token}"})).json()[
+        "id"
+    ]
+    await client.post(
+        f"/leagues/{league_id}/admins/{admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    response = await client.post(
+        f"/leagues/{league_id}/owner",
+        json={"new_owner_id": admin_id},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["owner_id"] == admin_id
+
+    membership = (
+        await db_session.execute(
+            select(LeagueUser).where(
+                LeagueUser.league_id == league_id, LeagueUser.user_id == admin_id
+            )
+        )
+    ).scalar_one()
+    assert membership.role == "admin"
+
+
 async def test_transfer_ownership_to_nonmember_returns_404(client, make_clerk_token):
     owner_token = make_clerk_token(
         clerk_id="user_transfer_404_owner", email="transfer404owner@example.com", name="Owner"
