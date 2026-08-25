@@ -44,7 +44,7 @@ Users can:
 - create a league
 - add themselves to a league
 
-League invites are deferred — not scheduled into a phase yet (see issue #8).
+League invites are scheduled as Phase 7 (see issue #55).
 
 ## Phase 3 — Admin authorization
 
@@ -82,3 +82,40 @@ does not yet include user predictions or points.
 - **Deliberately out of scope**: user predictions and the points/scoring system. The scoring
   formula (duel margin vs. multi-boat vs. tournament outcomes) isn't settled yet, and the
   prediction schema depends on it — both come in a later phase once decided.
+
+## Phase 5 — Usernames
+
+Users must pick a unique username on first login before doing anything else.
+
+- `User.display_name` is replaced by `User.username`: lowercase, `^[a-z0-9_]{3,20}$`, unique,
+  permanent once set. A new `require_username` dependency blocks every authenticated route except
+  the one that sets it, so a user can't do anything else until they've chosen one. `/me`
+  provisioning no longer seeds a name from Clerk's claims.
+
+## Phase 6 — League roles
+
+Leagues gain an owner (defaults to creator) and per-league admins, sitting above the plain-member
+role introduced in Phase 2.
+
+- `League` gains a mutable `owner_id` (distinct from the existing immutable `created_by`).
+- `LeagueUser` gains a `role` (`"member"` | `"admin"`); the owner's row is always `"admin"` too.
+- Any admin can promote a member to admin or kick a non-admin member. Only the owner can demote
+  an admin, kick an admin, or transfer ownership (to any member, who becomes admin if not
+  already). The owner can't leave the league without transferring ownership first.
+
+## Phase 7 — League invites
+
+League invites (issues #54, #55). Joining a league becomes gated by visibility and invite settings
+instead of the open `POST /leagues/{id}/join` from Phase 2.
+
+- `League` gains `visibility` (`"public"` | `"private"`, default `"private"`), `invite_policy`
+  (`"anyone"` | `"admins_only"` | `"owner_only"`, meaningful only when private), and
+  `settings_policy` (`"owner_only"` | `"admins_only"`, default `"owner_only"`) governing who can
+  change `visibility`/`invite_policy` — `settings_policy` itself can only ever be changed by the
+  owner.
+- New `LeagueInvite` table (`code`, `league_id`, `created_by`, `target_user_id` nullable,
+  `expires_at`, `redeemed_at`, `revoked_at`). Public leagues get open, unlimited-use links
+  (7-day expiry); private leagues get single-use codes targeted at one username (7-day expiry,
+  requires Phase 5). Either can be revoked early by its creator, an admin, or the owner. The
+  existing plain `POST /leagues/{id}/join` now only works on public leagues — private leagues
+  require a redeemed invite.
