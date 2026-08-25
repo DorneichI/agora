@@ -91,8 +91,8 @@ by `alembic upgrade head` (re-runs every migration from scratch).
   `docs/architecture.md#auth`); the backend only verifies Clerk-issued JWTs.
 - **Authorization**: `User.role` is a plain `str` (`"user"` | `"admin"`, default `"user"`) — no DB
   enum, no Clerk Organizations/Roles. Gate a route to admins only with `Depends(require_admin)`
-  (`app/deps.py`, layered on top of `get_current_user`) rather than checking `user.role` inline in
-  the route body.
+  (`app/deps.py`, layered on top of `require_username`, which itself depends on `get_current_user`)
+  rather than checking `user.role` inline in the route body.
 - **Response schemas**: never use a table model directly as a route's `response_model` — pair
   every table with a `*Read` SQLModel (e.g. `UserRead`, `LeagueRead`) that excludes
   `SoftDeleteMixin`'s bookkeeping columns (`created_at`/`updated_at`/`deleted_at`) from the API

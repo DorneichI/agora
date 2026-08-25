@@ -5,7 +5,7 @@ from app.models import League, LeagueUser, User
 
 
 async def test_league_has_soft_delete_fields_and_created_by(db_session):
-    creator = User(clerk_id="user_league_owner", email="owner@example.com", display_name="Owner")
+    creator = User(clerk_id="user_league_owner", email="owner@example.com")
     db_session.add(creator)
     await db_session.commit()
 
@@ -20,7 +20,7 @@ async def test_league_has_soft_delete_fields_and_created_by(db_session):
 
 
 async def test_leagueuser_links_league_and_user(db_session):
-    creator = User(clerk_id="user_lu_1", email="lu1@example.com", display_name="LU One")
+    creator = User(clerk_id="user_lu_1", email="lu1@example.com")
     db_session.add(creator)
     await db_session.commit()
 
@@ -37,7 +37,7 @@ async def test_leagueuser_links_league_and_user(db_session):
 
 
 async def test_duplicate_active_membership_rejected(db_session):
-    creator = User(clerk_id="user_lu_2", email="lu2@example.com", display_name="LU Two")
+    creator = User(clerk_id="user_lu_2", email="lu2@example.com")
     db_session.add(creator)
     await db_session.commit()
 
@@ -54,7 +54,7 @@ async def test_duplicate_active_membership_rejected(db_session):
 
 
 async def test_rejoin_after_leave_allowed_by_partial_index(db_session):
-    creator = User(clerk_id="user_lu_3", email="lu3@example.com", display_name="LU Three")
+    creator = User(clerk_id="user_lu_3", email="lu3@example.com")
     db_session.add(creator)
     await db_session.commit()
 

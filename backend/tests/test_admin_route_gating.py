@@ -16,7 +16,7 @@ from app.main import app
 
 # Every mutating route on a resource introduced in phases 3/4 must depend on require_admin.
 # Pre-existing routes (leagues, me) are intentionally excluded: league creation/join/leave are
-# regular-user actions, not admin actions, so they depend on get_current_user instead.
+# regular-user actions, not admin actions, so they depend on require_username instead.
 ADMIN_GATED_ROUTES = {
     ("POST", "/events"),
     ("PATCH", "/events/{event_id}"),

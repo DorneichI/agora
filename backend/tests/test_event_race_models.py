@@ -4,9 +4,7 @@ from app.models import Event, Race, User, Venue
 
 
 async def test_event_has_soft_delete_fields_and_created_by(db_session):
-    creator = User(
-        clerk_id="user_event_owner", email="eventowner@example.com", display_name="Owner"
-    )
+    creator = User(clerk_id="user_event_owner", email="eventowner@example.com")
     db_session.add(creator)
     await db_session.commit()
 
@@ -31,9 +29,7 @@ async def test_event_has_soft_delete_fields_and_created_by(db_session):
 
 
 async def test_event_accepts_optional_venue_and_image_url(db_session):
-    creator = User(
-        clerk_id="user_event_venue", email="eventvenue@example.com", display_name="Owner"
-    )
+    creator = User(clerk_id="user_event_venue", email="eventvenue@example.com")
     db_session.add(creator)
     await db_session.commit()
 
@@ -59,7 +55,7 @@ async def test_event_accepts_optional_venue_and_image_url(db_session):
 
 
 async def test_race_has_soft_delete_fields_and_created_by(db_session):
-    creator = User(clerk_id="user_race_owner", email="raceowner@example.com", display_name="Owner")
+    creator = User(clerk_id="user_race_owner", email="raceowner@example.com")
     db_session.add(creator)
     await db_session.commit()
 
@@ -87,7 +83,7 @@ async def test_race_has_soft_delete_fields_and_created_by(db_session):
 
 
 async def test_race_accepts_optional_round(db_session):
-    creator = User(clerk_id="user_race_round", email="raceround@example.com", display_name="Owner")
+    creator = User(clerk_id="user_race_round", email="raceround@example.com")
     db_session.add(creator)
     await db_session.commit()
 

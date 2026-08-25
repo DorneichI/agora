@@ -44,7 +44,7 @@ async def test_me_creates_user_on_first_call(client, make_clerk_token, db_sessio
     body = response.json()
     assert body["clerk_id"] == "user_new"
     assert body["email"] == "new@example.com"
-    assert body["display_name"] == "New Rower"
+    assert body["username"] is None
     assert body["role"] == "user"
 
     rows = (
@@ -73,7 +73,7 @@ async def test_concurrent_first_request_race_returns_existing_row(db_session, mo
     from app import deps
     from app.models import User
 
-    existing = User(clerk_id="user_race", email="race@example.com", display_name="Race")
+    existing = User(clerk_id="user_race", email="race@example.com")
     db_session.add(existing)
     await db_session.commit()
 
@@ -102,12 +102,10 @@ async def test_concurrent_first_request_race_returns_existing_row(db_session, mo
     assert user.email == "different@example.com"
 
 
-async def test_me_resyncs_email_and_display_name_on_returning_login(
-    client, make_clerk_token, db_session
-):
-    """Clerk is the source of truth for profile fields -- a returning user's stored
-    email/display_name must be refreshed from the newly-verified token claims, not left
-    stale from whatever was true at first login."""
+async def test_me_resyncs_email_on_returning_login(client, make_clerk_token, db_session):
+    """Clerk is the source of truth for profile fields -- a returning user's stored email
+    must be refreshed from the newly-verified token claims, not left stale from whatever
+    was true at first login."""
     first_token = make_clerk_token(clerk_id="user_resync", email="old@example.com", name="Old Name")
     first_response = await client.get("/me", headers={"Authorization": f"Bearer {first_token}"})
     assert first_response.status_code == 200
@@ -122,13 +120,11 @@ async def test_me_resyncs_email_and_display_name_on_returning_login(
     body = second_response.json()
     assert body["id"] == original_id
     assert body["email"] == "new@example.com"
-    assert body["display_name"] == "New Name"
 
     row = (
         await db_session.execute(select(User).where(User.clerk_id == "user_resync"))
     ).scalar_one()
     assert row.email == "new@example.com"
-    assert row.display_name == "New Name"
 
 
 async def test_me_returning_login_with_no_profile_claims_keeps_stored_profile(
@@ -157,7 +153,6 @@ async def test_me_returning_login_with_no_profile_claims_keeps_stored_profile(
     assert second_response.status_code == 200
     body = second_response.json()
     assert body["email"] == "kept@example.com"
-    assert body["display_name"] == "Kept Name"
 
 
 async def test_me_email_already_used_by_different_clerk_id_returns_409(client, make_clerk_token):
@@ -177,3 +172,124 @@ async def test_me_email_already_used_by_different_clerk_id_returns_409(client, m
     second_response = await client.get("/me", headers={"Authorization": f"Bearer {second_token}"})
 
     assert second_response.status_code == 409
+
+
+async def test_set_username_succeeds(client, make_clerk_token):
+    token = make_clerk_token(
+        clerk_id="user_set_username", email="setusername@example.com", name="Set Username"
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    response = await client.post(
+        "/me/username",
+        json={"username": "rower123"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["username"] == "rower123"
+
+
+async def test_set_username_lowercases_input(client, make_clerk_token):
+    token = make_clerk_token(
+        clerk_id="user_set_username_case", email="setusernamecase@example.com", name="Case"
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    response = await client.post(
+        "/me/username",
+        json={"username": "RowerCase"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["username"] == "rowercase"
+
+
+async def test_set_username_twice_returns_409(client, make_clerk_token):
+    token = make_clerk_token(
+        clerk_id="user_set_username_twice", email="setusernametwice@example.com", name="Twice"
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    first = await client.post(
+        "/me/username",
+        json={"username": "firstname"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert first.status_code == 200
+
+    second = await client.post(
+        "/me/username",
+        json={"username": "secondname"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert second.status_code == 409
+
+
+async def test_set_username_case_insensitive_collision_returns_409(client, make_clerk_token):
+    first_token = make_clerk_token(
+        clerk_id="user_username_collision_1",
+        email="usernamecollision1@example.com",
+        name="First",
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {first_token}"})
+    await client.post(
+        "/me/username",
+        json={"username": "alice"},
+        headers={"Authorization": f"Bearer {first_token}"},
+    )
+
+    second_token = make_clerk_token(
+        clerk_id="user_username_collision_2",
+        email="usernamecollision2@example.com",
+        name="Second",
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {second_token}"})
+
+    response = await client.post(
+        "/me/username",
+        json={"username": "Alice"},
+        headers={"Authorization": f"Bearer {second_token}"},
+    )
+
+    assert response.status_code == 409
+
+
+async def test_set_username_invalid_format_returns_422(client, make_clerk_token):
+    token = make_clerk_token(
+        clerk_id="user_set_username_invalid",
+        email="setusernameinvalid@example.com",
+        name="Invalid",
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    response = await client.post(
+        "/me/username",
+        json={"username": "no spaces allowed"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422
+
+
+async def test_set_username_too_short_returns_422(client, make_clerk_token):
+    token = make_clerk_token(
+        clerk_id="user_set_username_short", email="setusernameshort@example.com", name="Short"
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    response = await client.post(
+        "/me/username",
+        json={"username": "ab"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422
+
+
+async def test_set_username_without_token_returns_401(client):
+    response = await client.post("/me/username", json={"username": "rower123"})
+
+    assert response.status_code == 401
