@@ -350,3 +350,124 @@ async def test_leave_league_never_joined_is_noop(client, make_clerk_token):
     )
 
     assert response.status_code == 204
+
+
+async def test_promote_to_admin_without_token_returns_401(client):
+    response = await client.post("/leagues/1/admins/1")
+
+    assert response.status_code == 401
+
+
+async def test_promote_to_admin_by_non_admin_returns_403(client, make_clerk_token, db_session):
+    creator_token = make_clerk_token(
+        clerk_id="user_promote_creator", email="promotecreator@example.com", name="Creator"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Promote League"},
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    member_token = make_clerk_token(
+        clerk_id="user_promote_member", email="promotemember@example.com", name="Member"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {member_token}"}
+    )
+    member_id = (
+        await client.get("/me", headers={"Authorization": f"Bearer {member_token}"})
+    ).json()["id"]
+
+    other_token = make_clerk_token(
+        clerk_id="user_promote_other", email="promoteother@example.com", name="Other"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {other_token}"}
+    )
+
+    response = await client.post(
+        f"/leagues/{league_id}/admins/{member_id}",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+
+    assert response.status_code == 403
+
+
+async def test_promote_to_admin_by_admin_succeeds(client, make_clerk_token, db_session):
+    creator_token = make_clerk_token(
+        clerk_id="user_promote_ok_creator", email="promoteokcreator@example.com", name="Creator"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Promote OK League"},
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    member_token = make_clerk_token(
+        clerk_id="user_promote_ok_member", email="promoteokmember@example.com", name="Member"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {member_token}"}
+    )
+    member_id = (
+        await client.get("/me", headers={"Authorization": f"Bearer {member_token}"})
+    ).json()["id"]
+
+    response = await client.post(
+        f"/leagues/{league_id}/admins/{member_id}",
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["role"] == "admin"
+    assert body["user_id"] == member_id
+
+    membership = (
+        await db_session.execute(
+            select(LeagueUser).where(
+                LeagueUser.league_id == league_id, LeagueUser.user_id == member_id
+            )
+        )
+    ).scalar_one()
+    assert membership.role == "admin"
+
+
+async def test_promote_nonmember_returns_404(client, make_clerk_token):
+    creator_token = make_clerk_token(
+        clerk_id="user_promote_404_creator", email="promote404creator@example.com", name="Creator"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Promote 404 League"},
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    response = await client.post(
+        f"/leagues/{league_id}/admins/999999", headers={"Authorization": f"Bearer {creator_token}"}
+    )
+
+    assert response.status_code == 404
+
+
+async def test_promote_already_admin_returns_409(client, make_clerk_token):
+    creator_token = make_clerk_token(
+        clerk_id="user_promote_409_creator", email="promote409creator@example.com", name="Creator"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Promote 409 League"},
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    league_id = create_response.json()["id"]
+    creator_id = create_response.json()["created_by"]
+
+    response = await client.post(
+        f"/leagues/{league_id}/admins/{creator_id}",
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+
+    assert response.status_code == 409
