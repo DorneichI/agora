@@ -145,3 +145,34 @@ async def demote_admin(
     await session.commit()
     await session.refresh(membership)
     return membership
+
+
+@router.delete("/leagues/{league_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def kick_member(
+    league_id: int,
+    user_id: int,
+    league: League = Depends(require_league_admin),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    if user_id == user.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Use POST /leagues/{league_id}/leave instead of kicking yourself",
+        )
+
+    membership = await get_active_league_membership(session, league_id, user_id)
+    if membership is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+
+    if user_id == league.owner_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="The league owner cannot be kicked"
+        )
+    if membership.role == "admin" and user.id != league.owner_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Only the owner can kick an admin"
+        )
+
+    await session.delete(membership)
+    await session.commit()
