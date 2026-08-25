@@ -91,7 +91,16 @@ async def get_current_user(
     return user
 
 
-async def require_admin(user: User = Depends(get_current_user)) -> User:
+async def require_username(user: User = Depends(get_current_user)) -> User:
+    if user.username is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Username must be set before accessing this resource",
+        )
+    return user
+
+
+async def require_admin(user: User = Depends(require_username)) -> User:
     if user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
