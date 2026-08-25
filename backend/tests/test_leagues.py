@@ -1292,6 +1292,7 @@ async def test_patch_league_settings_policy_admins_only_still_blocks_plain_membe
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
 
     setup_response = await client.patch(
         f"/leagues/{league_id}",
