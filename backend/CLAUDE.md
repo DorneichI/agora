@@ -97,3 +97,5 @@ by `alembic upgrade head` (re-runs every migration from scratch).
   every table with a `*Read` SQLModel (e.g. `UserRead`, `LeagueRead`) that excludes
   `SoftDeleteMixin`'s bookkeeping columns (`created_at`/`updated_at`/`deleted_at`) from the API
   response.
+- **Route naming for multi-word resources**: kebab-case, e.g. `RaceEntry` -> `/race-entries`
+  (established by issue #44's `race_entries.py` router, the first two-word resource in the API).
