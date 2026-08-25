@@ -6,7 +6,7 @@ from sqlmodel import SQLModel, select
 
 from app.crud_helpers import assert_not_referenced, get_or_404, validate_fk_exists
 from app.db import get_session
-from app.deps import get_current_user, require_admin
+from app.deps import require_admin, require_username
 from app.models import Event, EventRead, Race, User, Venue
 
 router = APIRouter()
@@ -63,7 +63,7 @@ async def create_event(
 @router.get("/events/{event_id}", response_model=EventRead)
 async def get_event(
     event_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> Event:
     return await get_or_404(session, Event, event_id)
@@ -71,7 +71,7 @@ async def get_event(
 
 @router.get("/events", response_model=list[EventRead])
 async def list_events(
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> list[Event]:
     return list((await session.execute(select(Event))).scalars().all())

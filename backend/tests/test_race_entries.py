@@ -167,7 +167,7 @@ async def test_get_race_entry_without_token_returns_401(client):
     assert response.status_code == 401
 
 
-async def test_get_race_entry_as_non_admin_succeeds(client, make_clerk_token, make_admin):
+async def test_get_race_entry_as_non_admin_succeeds(client, make_user, make_admin):
     token, _admin_id = await make_admin("user_re_get_admin", "regetadmin@example.com", "Admin")
     race_id, team_id = await _create_race_and_team(client, token)
     create_response = await client.post(
@@ -177,9 +177,7 @@ async def test_get_race_entry_as_non_admin_succeeds(client, make_clerk_token, ma
     )
     entry_id = create_response.json()["id"]
 
-    reader_token = make_clerk_token(
-        clerk_id="user_re_reader", email="rereader@example.com", name="Reader"
-    )
+    reader_token, _reader_id = await make_user("user_re_reader", "rereader@example.com", "Reader")
     response = await client.get(
         f"/race-entries/{entry_id}", headers={"Authorization": f"Bearer {reader_token}"}
     )
@@ -188,10 +186,8 @@ async def test_get_race_entry_as_non_admin_succeeds(client, make_clerk_token, ma
     assert response.json()["level"] == "varsity"
 
 
-async def test_get_nonexistent_race_entry_returns_404(client, make_clerk_token):
-    token = make_clerk_token(
-        clerk_id="user_re_missing", email="remissing@example.com", name="Missing"
-    )
+async def test_get_nonexistent_race_entry_returns_404(client, make_user):
+    token, _user_id = await make_user("user_re_missing", "remissing@example.com", "Missing")
 
     response = await client.get(
         "/race-entries/999999", headers={"Authorization": f"Bearer {token}"}

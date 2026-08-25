@@ -63,7 +63,7 @@ async def test_get_team_without_token_returns_401(client):
     assert response.status_code == 401
 
 
-async def test_get_team_as_non_admin_succeeds(client, make_clerk_token, db_session, make_admin):
+async def test_get_team_as_non_admin_succeeds(client, make_user, db_session, make_admin):
     token, _admin_id = await make_admin("user_team_get_admin", "teamgetadmin@example.com", "Admin")
     create_response = await client.post(
         "/teams",
@@ -72,8 +72,8 @@ async def test_get_team_as_non_admin_succeeds(client, make_clerk_token, db_sessi
     )
     team_id = create_response.json()["id"]
 
-    reader_token = make_clerk_token(
-        clerk_id="user_team_reader", email="teamreader@example.com", name="Reader"
+    reader_token, _reader_id = await make_user(
+        "user_team_reader", "teamreader@example.com", "Reader"
     )
     response = await client.get(
         f"/teams/{team_id}", headers={"Authorization": f"Bearer {reader_token}"}
@@ -83,10 +83,8 @@ async def test_get_team_as_non_admin_succeeds(client, make_clerk_token, db_sessi
     assert response.json()["name"] == "Elis"
 
 
-async def test_get_nonexistent_team_returns_404(client, make_clerk_token):
-    token = make_clerk_token(
-        clerk_id="user_team_missing", email="teammissing@example.com", name="Missing"
-    )
+async def test_get_nonexistent_team_returns_404(client, make_user):
+    token, _user_id = await make_user("user_team_missing", "teammissing@example.com", "Missing")
 
     response = await client.get("/teams/999999", headers={"Authorization": f"Bearer {token}"})
 

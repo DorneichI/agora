@@ -4,7 +4,7 @@ from sqlmodel import SQLModel, select
 
 from app.crud_helpers import assert_not_referenced, get_or_404
 from app.db import get_session
-from app.deps import get_current_user, require_admin
+from app.deps import require_admin, require_username
 from app.models import RaceEntry, Team, TeamRead, User
 
 router = APIRouter()
@@ -38,7 +38,7 @@ async def create_team(
 @router.get("/teams/{team_id}", response_model=TeamRead)
 async def get_team(
     team_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> Team:
     return await get_or_404(session, Team, team_id)
@@ -46,7 +46,7 @@ async def get_team(
 
 @router.get("/teams", response_model=list[TeamRead])
 async def list_teams(
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> list[Team]:
     return list((await session.execute(select(Team))).scalars().all())

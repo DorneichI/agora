@@ -7,7 +7,7 @@ from sqlmodel import SQLModel, select
 
 from app.crud_helpers import get_or_404, validate_fk_exists
 from app.db import get_session
-from app.deps import get_current_user, require_admin
+from app.deps import require_admin, require_username
 from app.models import Race, RaceEntry, RaceEntryRead, Team, User
 
 router = APIRouter()
@@ -63,7 +63,7 @@ async def create_race_entry(
 @router.get("/race-entries/{race_entry_id}", response_model=RaceEntryRead)
 async def get_race_entry(
     race_entry_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> RaceEntry:
     return await get_or_404(session, RaceEntry, race_entry_id)
@@ -71,7 +71,7 @@ async def get_race_entry(
 
 @router.get("/race-entries", response_model=list[RaceEntryRead])
 async def list_race_entries(
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> list[RaceEntry]:
     return list((await session.execute(select(RaceEntry))).scalars().all())

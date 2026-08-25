@@ -59,7 +59,7 @@ async def test_get_venue_without_token_returns_401(client):
     assert response.status_code == 401
 
 
-async def test_get_venue_as_non_admin_succeeds(client, make_clerk_token, db_session, make_admin):
+async def test_get_venue_as_non_admin_succeeds(client, make_user, db_session, make_admin):
     token, _admin_id = await make_admin(
         "user_venue_get_admin", "venuegetadmin@example.com", "Admin"
     )
@@ -70,8 +70,8 @@ async def test_get_venue_as_non_admin_succeeds(client, make_clerk_token, db_sess
     )
     venue_id = create_response.json()["id"]
 
-    reader_token = make_clerk_token(
-        clerk_id="user_venue_reader", email="venuereader@example.com", name="Reader"
+    reader_token, _reader_id = await make_user(
+        "user_venue_reader", "venuereader@example.com", "Reader"
     )
     response = await client.get(
         f"/venues/{venue_id}", headers={"Authorization": f"Bearer {reader_token}"}
@@ -81,10 +81,8 @@ async def test_get_venue_as_non_admin_succeeds(client, make_clerk_token, db_sess
     assert response.json()["name"] == "Cooper River"
 
 
-async def test_get_nonexistent_venue_returns_404(client, make_clerk_token):
-    token = make_clerk_token(
-        clerk_id="user_venue_missing", email="venuemissing@example.com", name="Missing"
-    )
+async def test_get_nonexistent_venue_returns_404(client, make_user):
+    token, _user_id = await make_user("user_venue_missing", "venuemissing@example.com", "Missing")
 
     response = await client.get("/venues/999999", headers={"Authorization": f"Bearer {token}"})
 
