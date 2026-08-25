@@ -59,6 +59,17 @@ async def test_get_venue_without_token_returns_401(client):
     assert response.status_code == 401
 
 
+async def test_get_venue_without_username_returns_403(client, make_clerk_token):
+    token = make_clerk_token(
+        clerk_id="user_venue_no_username", email="venuenousername@example.com", name="No Username"
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    response = await client.get("/venues/1", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 403
+
+
 async def test_get_venue_as_non_admin_succeeds(client, make_user, db_session, make_admin):
     token, _admin_id = await make_admin(
         "user_venue_get_admin", "venuegetadmin@example.com", "Admin"

@@ -167,6 +167,17 @@ async def test_get_race_entry_without_token_returns_401(client):
     assert response.status_code == 401
 
 
+async def test_get_race_entry_without_username_returns_403(client, make_clerk_token):
+    token = make_clerk_token(
+        clerk_id="user_re_no_username", email="renousername@example.com", name="No Username"
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    response = await client.get("/race-entries/1", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 403
+
+
 async def test_get_race_entry_as_non_admin_succeeds(client, make_user, make_admin):
     token, _admin_id = await make_admin("user_re_get_admin", "regetadmin@example.com", "Admin")
     race_id, team_id = await _create_race_and_team(client, token)

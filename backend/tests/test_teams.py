@@ -63,6 +63,17 @@ async def test_get_team_without_token_returns_401(client):
     assert response.status_code == 401
 
 
+async def test_get_team_without_username_returns_403(client, make_clerk_token):
+    token = make_clerk_token(
+        clerk_id="user_team_no_username", email="teamnousername@example.com", name="No Username"
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    response = await client.get("/teams/1", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 403
+
+
 async def test_get_team_as_non_admin_succeeds(client, make_user, db_session, make_admin):
     token, _admin_id = await make_admin("user_team_get_admin", "teamgetadmin@example.com", "Admin")
     create_response = await client.post(
