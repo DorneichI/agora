@@ -5,8 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from app.clerk import verify_clerk_jwt
+from app.crud_helpers import get_or_404
 from app.db import get_session
-from app.models import User
+from app.models import League, LeagueUser, User
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -103,3 +104,44 @@ async def require_admin(user: User = Depends(get_current_user)) -> User:
             detail="Admin privileges required",
         )
     return user
+
+
+async def get_active_league_membership(
+    session: AsyncSession, league_id: int, user_id: int
+) -> LeagueUser | None:
+    return (
+        await session.execute(
+            select(LeagueUser).where(
+                LeagueUser.league_id == league_id, LeagueUser.user_id == user_id
+            )
+        )
+    ).scalar_one_or_none()
+
+
+async def require_league_admin(
+    league_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> League:
+    league = await get_or_404(session, League, league_id)
+    membership = await get_active_league_membership(session, league_id, user.id)
+    if membership is None or membership.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="League admin privileges required",
+        )
+    return league
+
+
+async def require_league_owner(
+    league_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> League:
+    league = await get_or_404(session, League, league_id)
+    if league.owner_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="League owner privileges required",
+        )
+    return league
