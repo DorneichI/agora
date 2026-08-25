@@ -3,7 +3,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, select
 
 from app.db import get_session
-from app.deps import get_active_league_membership, get_current_user, require_league_admin
+from app.deps import (
+    get_active_league_membership,
+    get_current_user,
+    require_league_admin,
+    require_league_owner,
+)
 from app.models import League, LeagueRead, LeagueUser, LeagueUserRead, User
 
 router = APIRouter()
@@ -111,6 +116,31 @@ async def promote_to_admin(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User is already an admin")
 
     membership.role = "admin"
+    session.add(membership)
+    await session.commit()
+    await session.refresh(membership)
+    return membership
+
+
+@router.delete("/leagues/{league_id}/admins/{user_id}", response_model=LeagueUserRead)
+async def demote_admin(
+    league_id: int,
+    user_id: int,
+    league: League = Depends(require_league_owner),
+    session: AsyncSession = Depends(get_session),
+) -> LeagueUser:
+    membership = await get_active_league_membership(session, league_id, user_id)
+    if membership is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
+    if user_id == league.owner_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The owner cannot be demoted; transfer ownership instead",
+        )
+    if membership.role != "admin":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User is not an admin")
+
+    membership.role = "member"
     session.add(membership)
     await session.commit()
     await session.refresh(membership)
