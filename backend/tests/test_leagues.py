@@ -1112,3 +1112,244 @@ async def test_non_owner_member_can_still_leave_freely(client, make_user):
     )
 
     assert response.status_code == 204
+
+
+async def test_patch_league_without_token_returns_401(client):
+    response = await client.patch("/leagues/1", json={"visibility": "public"})
+
+    assert response.status_code == 401
+
+
+async def test_patch_league_empty_body_is_noop(client, make_user):
+    token, _creator_id = await make_user("user_patch_noop", "patchnoop@example.com", "Patch Noop")
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Patch Noop League"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    response = await client.patch(
+        f"/leagues/{league_id}", json={}, headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["visibility"] == "private"
+    assert body["invite_policy"] == "owner_only"
+    assert body["settings_policy"] == "owner_only"
+
+
+async def test_patch_league_invalid_visibility_returns_422(client, make_user):
+    token, _creator_id = await make_user("user_patch_422", "patch422@example.com", "Patch 422")
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Patch 422 League"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    response = await client.patch(
+        f"/leagues/{league_id}",
+        json={"visibility": "foo"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422
+
+
+async def test_patch_league_owner_can_change_visibility(client, make_user, db_session):
+    token, _creator_id = await make_user(
+        "user_patch_owner", "patchowner@example.com", "Patch Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Patch Owner League"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    response = await client.patch(
+        f"/leagues/{league_id}",
+        json={"visibility": "public"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["visibility"] == "public"
+
+    league = await db_session.get(League, league_id)
+    assert league.visibility == "public"
+
+
+async def test_patch_league_settings_policy_owner_only_blocks_non_owner_admin(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_patch_oo_owner", "patchooowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Patch Owner Only League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    admin_token, admin_id = await make_user(
+        "user_patch_oo_admin", "patchooadmin@example.com", "Admin"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    await client.post(
+        f"/leagues/{league_id}/admins/{admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    response = await client.patch(
+        f"/leagues/{league_id}",
+        json={"visibility": "private"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Only the league owner can change these settings"
+
+
+async def test_patch_league_settings_policy_admins_only_allows_admin(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_patch_ao_owner", "patchaoowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Patch Admins Only League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    admin_token, admin_id = await make_user(
+        "user_patch_ao_admin", "patchaoadmin@example.com", "Admin"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    await client.post(
+        f"/leagues/{league_id}/admins/{admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    await client.patch(
+        f"/leagues/{league_id}",
+        json={"settings_policy": "admins_only"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    response = await client.patch(
+        f"/leagues/{league_id}",
+        json={"visibility": "public"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["visibility"] == "public"
+
+
+async def test_patch_league_settings_policy_admins_only_still_blocks_plain_member(
+    client, make_user
+):
+    owner_token, _owner_id = await make_user(
+        "user_patch_ao_member_owner", "patchaomemberowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Patch Admins Only Member League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    await client.patch(
+        f"/leagues/{league_id}",
+        json={"settings_policy": "admins_only"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    member_token, _member_id = await make_user(
+        "user_patch_ao_member", "patchaomember@example.com", "Member"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {member_token}"}
+    )
+
+    response = await client.patch(
+        f"/leagues/{league_id}",
+        json={"invite_policy": "anyone"},
+        headers={"Authorization": f"Bearer {member_token}"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "League admin privileges required"
+
+
+async def test_patch_league_non_owner_cannot_change_settings_policy_even_under_admins_only(
+    client, make_user
+):
+    owner_token, _owner_id = await make_user(
+        "user_patch_sp_owner", "patchspowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Patch Settings Policy League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    admin_token, admin_id = await make_user(
+        "user_patch_sp_admin", "patchspadmin@example.com", "Admin"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    await client.post(
+        f"/leagues/{league_id}/admins/{admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    await client.patch(
+        f"/leagues/{league_id}",
+        json={"settings_policy": "admins_only"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    response = await client.patch(
+        f"/leagues/{league_id}",
+        json={"settings_policy": "owner_only"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Only the league owner can change settings_policy"
+
+
+async def test_patch_league_owner_combines_settings_policy_and_visibility_in_one_request(
+    client, make_user, db_session
+):
+    owner_token, _owner_id = await make_user(
+        "user_patch_combo_owner", "patchcomboowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Patch Combo League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    response = await client.patch(
+        f"/leagues/{league_id}",
+        json={"settings_policy": "admins_only", "visibility": "public"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["settings_policy"] == "admins_only"
+    assert body["visibility"] == "public"
+
+    league = await db_session.get(League, league_id)
+    assert league.settings_policy == "admins_only"
+    assert league.visibility == "public"
