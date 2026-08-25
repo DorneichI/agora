@@ -172,3 +172,124 @@ async def test_me_email_already_used_by_different_clerk_id_returns_409(client, m
     second_response = await client.get("/me", headers={"Authorization": f"Bearer {second_token}"})
 
     assert second_response.status_code == 409
+
+
+async def test_set_username_succeeds(client, make_clerk_token):
+    token = make_clerk_token(
+        clerk_id="user_set_username", email="setusername@example.com", name="Set Username"
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    response = await client.post(
+        "/me/username",
+        json={"username": "rower123"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["username"] == "rower123"
+
+
+async def test_set_username_lowercases_input(client, make_clerk_token):
+    token = make_clerk_token(
+        clerk_id="user_set_username_case", email="setusernamecase@example.com", name="Case"
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    response = await client.post(
+        "/me/username",
+        json={"username": "RowerCase"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["username"] == "rowercase"
+
+
+async def test_set_username_twice_returns_409(client, make_clerk_token):
+    token = make_clerk_token(
+        clerk_id="user_set_username_twice", email="setusernametwice@example.com", name="Twice"
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    first = await client.post(
+        "/me/username",
+        json={"username": "firstname"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert first.status_code == 200
+
+    second = await client.post(
+        "/me/username",
+        json={"username": "secondname"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert second.status_code == 409
+
+
+async def test_set_username_case_insensitive_collision_returns_409(client, make_clerk_token):
+    first_token = make_clerk_token(
+        clerk_id="user_username_collision_1",
+        email="usernamecollision1@example.com",
+        name="First",
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {first_token}"})
+    await client.post(
+        "/me/username",
+        json={"username": "alice"},
+        headers={"Authorization": f"Bearer {first_token}"},
+    )
+
+    second_token = make_clerk_token(
+        clerk_id="user_username_collision_2",
+        email="usernamecollision2@example.com",
+        name="Second",
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {second_token}"})
+
+    response = await client.post(
+        "/me/username",
+        json={"username": "Alice"},
+        headers={"Authorization": f"Bearer {second_token}"},
+    )
+
+    assert response.status_code == 409
+
+
+async def test_set_username_invalid_format_returns_422(client, make_clerk_token):
+    token = make_clerk_token(
+        clerk_id="user_set_username_invalid",
+        email="setusernameinvalid@example.com",
+        name="Invalid",
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    response = await client.post(
+        "/me/username",
+        json={"username": "no spaces allowed"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422
+
+
+async def test_set_username_too_short_returns_422(client, make_clerk_token):
+    token = make_clerk_token(
+        clerk_id="user_set_username_short", email="setusernameshort@example.com", name="Short"
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    response = await client.post(
+        "/me/username",
+        json={"username": "ab"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422
+
+
+async def test_set_username_without_token_returns_401(client):
+    response = await client.post("/me/username", json={"username": "rower123"})
+
+    assert response.status_code == 401
