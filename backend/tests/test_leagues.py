@@ -398,6 +398,7 @@ async def test_promote_to_admin_by_non_admin_returns_403(client, make_user, db_s
         headers={"Authorization": f"Bearer {creator_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, creator_token, league_id)
 
     member_token, member_id = await make_user(
         "user_promote_member", "promotemember@example.com", "Member"
@@ -514,6 +515,7 @@ async def test_demote_admin_by_non_owner_admin_returns_403(client, make_user):
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
 
     admin_token, admin_id = await make_user(
         "user_demote_403_admin", "demote403admin@example.com", "Admin"
@@ -707,6 +709,7 @@ async def test_kick_member_by_non_admin_returns_403(client, make_user):
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
 
     member_a_token, member_a_id = await make_user(
         "user_kick_403_a", "kick403a@example.com", "MemberA"
@@ -740,6 +743,7 @@ async def test_kick_admin_by_non_owner_admin_returns_403(client, make_user):
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
 
     admin_token, admin_id = await make_user(
         "user_kick_admin_403_admin", "kickadmin403admin@example.com", "Admin"
@@ -815,6 +819,7 @@ async def test_kick_owner_returns_403(client, make_user):
     )
     league_id = create_response.json()["id"]
     owner_id = create_response.json()["created_by"]
+    await _make_league_public(client, owner_token, league_id)
 
     second_admin_token, second_admin_id = await make_user(
         "user_kick_owner_403_second", "kickowner403second@example.com", "Second"
@@ -889,6 +894,7 @@ async def test_transfer_ownership_by_non_owner_returns_403(client, make_user):
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
 
     member_token, member_id = await make_user(
         "user_transfer_403_member", "transfer403member@example.com", "Member"
@@ -1119,6 +1125,7 @@ async def test_non_owner_member_can_still_leave_freely(client, make_user):
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
 
     member_token, _member_id = await make_user(
         "user_leave_free_member", "leavefreemember@example.com", "Member"
