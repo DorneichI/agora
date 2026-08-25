@@ -122,6 +122,10 @@ async def join_league(
     ).scalar_one_or_none()
     if league is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="League not found")
+    if league.visibility != "public":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="This league is not public"
+        )
 
     membership = (
         await session.execute(

@@ -3,6 +3,14 @@ from sqlmodel import select
 from app.models import League, LeagueUser
 
 
+async def _make_league_public(client, token, league_id):
+    await client.patch(
+        f"/leagues/{league_id}",
+        json={"visibility": "public"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+
 async def test_create_league_without_token_returns_401(client):
     response = await client.post("/leagues", json={"name": "Head of the Charles"})
 
@@ -172,6 +180,7 @@ async def test_join_league_creates_active_membership(client, make_user, db_sessi
         headers={"Authorization": f"Bearer {creator_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, creator_token, league_id)
 
     joiner_token, joiner_id = await make_user(
         "user_join_joiner", "joinjoiner@example.com", "Join Joiner"
@@ -207,6 +216,7 @@ async def test_join_league_already_active_member_is_idempotent(client, make_user
         headers={"Authorization": f"Bearer {token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, token, league_id)
 
     join_response = await client.post(
         f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {token}"}
@@ -238,6 +248,7 @@ async def test_rejoin_after_leave_resurrects_same_row(client, make_user, db_sess
         headers={"Authorization": f"Bearer {creator_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, creator_token, league_id)
 
     joiner_token, joiner_id = await make_user(
         "user_rejoin_joiner", "rejoinjoiner@example.com", "Rejoin Joiner"
@@ -309,6 +320,7 @@ async def test_leave_league_soft_deletes_membership(client, make_user, db_sessio
         headers={"Authorization": f"Bearer {creator_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, creator_token, league_id)
 
     token, member_id = await make_user(
         "user_leave_member", "leavemember@example.com", "Leave Member"
@@ -419,6 +431,7 @@ async def test_promote_to_admin_by_admin_succeeds(client, make_user, db_session)
         headers={"Authorization": f"Bearer {creator_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, creator_token, league_id)
 
     member_token, member_id = await make_user(
         "user_promote_ok_member", "promoteokmember@example.com", "Member"
@@ -542,6 +555,7 @@ async def test_demote_admin_by_owner_succeeds(client, make_user, db_session):
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
 
     admin_token, admin_id = await make_user(
         "user_demote_ok_admin", "demoteokadmin@example.com", "Admin"
@@ -602,6 +616,7 @@ async def test_demote_plain_member_returns_409(client, make_user):
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
 
     member_token, member_id = await make_user(
         "user_demote_plain_member", "demoteplainmember@example.com", "Member"
@@ -652,6 +667,7 @@ async def test_kick_member_by_admin_succeeds(client, make_user, db_session):
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
 
     member_token, member_id = await make_user(
         "user_kick_ok_member", "kickokmember@example.com", "Member"
@@ -767,6 +783,7 @@ async def test_kick_admin_by_owner_succeeds(client, make_user):
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
 
     admin_token, admin_id = await make_user(
         "user_kick_admin_ok_admin", "kickadminokadmin@example.com", "Admin"
@@ -899,6 +916,7 @@ async def test_transfer_ownership_to_member_succeeds(client, make_user, db_sessi
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
 
     member_token, member_id = await make_user(
         "user_transfer_ok_member", "transferokmember@example.com", "Member"
@@ -941,6 +959,7 @@ async def test_transfer_ownership_to_existing_admin_succeeds(client, make_user, 
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
 
     admin_token, admin_id = await make_user(
         "user_transfer_admin_target",
@@ -1066,6 +1085,7 @@ async def test_owner_can_leave_after_transferring(client, make_user):
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
 
     member_token, member_id = await make_user(
         "user_leave_after_transfer_member",
@@ -1224,6 +1244,7 @@ async def test_patch_league_settings_policy_admins_only_allows_admin(client, mak
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
 
     admin_token, admin_id = await make_user(
         "user_patch_ao_admin", "patchaoadmin@example.com", "Admin"
@@ -1392,3 +1413,51 @@ async def test_patch_nonexistent_league_returns_404(client, make_user):
     )
 
     assert response.status_code == 404
+
+
+async def test_join_public_league_succeeds(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_join_public_owner", "joinpublicowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Join Public League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+    await client.patch(
+        f"/leagues/{league_id}",
+        json={"visibility": "public"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    joiner_token, _joiner_id = await make_user(
+        "user_join_public_joiner", "joinpublicjoiner@example.com", "Joiner"
+    )
+    response = await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {joiner_token}"}
+    )
+
+    assert response.status_code == 204
+
+
+async def test_join_private_league_returns_403(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_join_private_owner", "joinprivateowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Join Private League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    joiner_token, _joiner_id = await make_user(
+        "user_join_private_joiner", "joinprivatejoiner@example.com", "Joiner"
+    )
+    response = await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {joiner_token}"}
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "This league is not public"
