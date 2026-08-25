@@ -7,11 +7,13 @@ from app.soft_delete import SoftDeleteMixin
 class League(SoftDeleteMixin, table=True):
     name: str = Field()
     created_by: int = Field(foreign_key="user.id")
+    owner_id: int = Field(foreign_key="user.id")
 
 
 class LeagueUser(SoftDeleteMixin, table=True):
     league_id: int = Field(foreign_key="league.id")
     user_id: int = Field(foreign_key="user.id")
+    role: str = Field(default="member")
 
     __table_args__ = (
         Index(
@@ -25,12 +27,14 @@ class LeagueUser(SoftDeleteMixin, table=True):
 
 
 class LeagueRead(SQLModel):
-    """Public shape of a League, used as API response models instead of the table model
-    itself -- keeps internal/bookkeeping columns (e.g. any added to SoftDeleteMixin or
-    League later) from being auto-exposed (and auto-codegen'd into the web/mobile clients,
-    see docs/architecture.md#api-contract) just by existing on the table. See
-    backend/CLAUDE.md's "Response schemas" convention."""
-
     id: int
     name: str
     created_by: int
+    owner_id: int
+
+
+class LeagueUserRead(SQLModel):
+    id: int
+    league_id: int
+    user_id: int
+    role: str

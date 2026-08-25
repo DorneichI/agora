@@ -46,6 +46,7 @@ async def test_create_league_creates_league_and_membership(client, make_user, db
     )
     assert len(league_rows) == 1
     assert league_rows[0].created_by == body["created_by"]
+    assert league_rows[0].owner_id == body["created_by"]
 
     membership_rows = (
         (await db_session.execute(select(LeagueUser).where(LeagueUser.league_id == body["id"])))
@@ -54,6 +55,7 @@ async def test_create_league_creates_league_and_membership(client, make_user, db
     )
     assert len(membership_rows) == 1
     assert membership_rows[0].user_id == body["created_by"]
+    assert membership_rows[0].role == "admin"
 
 
 async def test_create_league_response_excludes_internal_fields(client, make_user):
@@ -70,7 +72,7 @@ async def test_create_league_response_excludes_internal_fields(client, make_user
     )
 
     body = response.json()
-    assert set(body.keys()) == {"id", "name", "created_by"}
+    assert set(body.keys()) == {"id", "name", "created_by", "owner_id"}
 
 
 async def test_get_league_without_token_returns_401(client):
@@ -93,7 +95,7 @@ async def test_get_league_returns_created_league(client, make_user):
     assert get_response.status_code == 200
     body = get_response.json()
     assert body["name"] == "Boston Sprints"
-    assert set(body.keys()) == {"id", "name", "created_by"}
+    assert set(body.keys()) == {"id", "name", "created_by", "owner_id"}
 
 
 async def test_get_nonexistent_league_returns_404(client, make_user):
@@ -282,15 +284,20 @@ async def test_leave_nonexistent_league_returns_404(client, make_user):
 
 
 async def test_leave_league_soft_deletes_membership(client, make_user, db_session):
-    token, member_id = await make_user(
-        "user_leave_member", "leavemember@example.com", "Leave Member"
+    creator_token, _creator_id = await make_user(
+        "user_leave_creator", "leavecreator@example.com", "Creator"
     )
     create_response = await client.post(
         "/leagues",
         json={"name": "Leave Test League"},
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {creator_token}"},
     )
     league_id = create_response.json()["id"]
+
+    token, member_id = await make_user(
+        "user_leave_member", "leavemember@example.com", "Leave Member"
+    )
+    await client.post(f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {token}"})
 
     leave_response = await client.post(
         f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {token}"}
@@ -342,6 +349,750 @@ async def test_leave_league_never_joined_is_noop(client, make_user):
     )
     response = await client.post(
         f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {bystander_token}"}
+    )
+
+    assert response.status_code == 204
+
+
+async def test_promote_to_admin_without_token_returns_401(client):
+    response = await client.post("/leagues/1/admins/1")
+
+    assert response.status_code == 401
+
+
+async def test_promote_to_admin_by_non_admin_returns_403(client, make_user, db_session):
+    creator_token, _creator_id = await make_user(
+        "user_promote_creator", "promotecreator@example.com", "Creator"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Promote League"},
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    member_token, member_id = await make_user(
+        "user_promote_member", "promotemember@example.com", "Member"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {member_token}"}
+    )
+
+    other_token, _other_id = await make_user(
+        "user_promote_other", "promoteother@example.com", "Other"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {other_token}"}
+    )
+
+    response = await client.post(
+        f"/leagues/{league_id}/admins/{member_id}",
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+
+    assert response.status_code == 403
+
+
+async def test_promote_to_admin_by_admin_succeeds(client, make_user, db_session):
+    creator_token, _creator_id = await make_user(
+        "user_promote_ok_creator", "promoteokcreator@example.com", "Creator"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Promote OK League"},
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    member_token, member_id = await make_user(
+        "user_promote_ok_member", "promoteokmember@example.com", "Member"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {member_token}"}
+    )
+
+    response = await client.post(
+        f"/leagues/{league_id}/admins/{member_id}",
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["role"] == "admin"
+    assert body["user_id"] == member_id
+
+    membership = (
+        await db_session.execute(
+            select(LeagueUser).where(
+                LeagueUser.league_id == league_id, LeagueUser.user_id == member_id
+            )
+        )
+    ).scalar_one()
+    assert membership.role == "admin"
+
+
+async def test_promote_nonmember_returns_404(client, make_user):
+    creator_token, _creator_id = await make_user(
+        "user_promote_404_creator", "promote404creator@example.com", "Creator"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Promote 404 League"},
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    response = await client.post(
+        f"/leagues/{league_id}/admins/999999", headers={"Authorization": f"Bearer {creator_token}"}
+    )
+
+    assert response.status_code == 404
+
+
+async def test_promote_already_admin_returns_409(client, make_user):
+    creator_token, _creator_id = await make_user(
+        "user_promote_409_creator", "promote409creator@example.com", "Creator"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Promote 409 League"},
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    league_id = create_response.json()["id"]
+    creator_id = create_response.json()["created_by"]
+
+    response = await client.post(
+        f"/leagues/{league_id}/admins/{creator_id}",
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+
+    assert response.status_code == 409
+
+
+async def test_demote_admin_without_token_returns_401(client):
+    response = await client.delete("/leagues/1/admins/1")
+
+    assert response.status_code == 401
+
+
+async def test_demote_admin_by_non_owner_admin_returns_403(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_demote_403_owner", "demote403owner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Demote 403 League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    admin_token, admin_id = await make_user(
+        "user_demote_403_admin", "demote403admin@example.com", "Admin"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    await client.post(
+        f"/leagues/{league_id}/admins/{admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    other_admin_token, other_admin_id = await make_user(
+        "user_demote_403_other", "demote403other@example.com", "OtherAdmin"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {other_admin_token}"}
+    )
+    await client.post(
+        f"/leagues/{league_id}/admins/{other_admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    response = await client.delete(
+        f"/leagues/{league_id}/admins/{admin_id}",
+        headers={"Authorization": f"Bearer {other_admin_token}"},
+    )
+
+    assert response.status_code == 403
+
+
+async def test_demote_admin_by_owner_succeeds(client, make_user, db_session):
+    owner_token, _owner_id = await make_user(
+        "user_demote_ok_owner", "demoteokowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Demote OK League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    admin_token, admin_id = await make_user(
+        "user_demote_ok_admin", "demoteokadmin@example.com", "Admin"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    await client.post(
+        f"/leagues/{league_id}/admins/{admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    response = await client.delete(
+        f"/leagues/{league_id}/admins/{admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["role"] == "member"
+
+    membership = (
+        await db_session.execute(
+            select(LeagueUser).where(
+                LeagueUser.league_id == league_id, LeagueUser.user_id == admin_id
+            )
+        )
+    ).scalar_one()
+    assert membership.role == "member"
+
+
+async def test_demote_owner_returns_409(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_demote_owner_409", "demoteowner409@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Demote Owner League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+    owner_id = create_response.json()["created_by"]
+
+    response = await client.delete(
+        f"/leagues/{league_id}/admins/{owner_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 409
+
+
+async def test_demote_plain_member_returns_409(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_demote_plain_409", "demoteplain409@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Demote Plain League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    member_token, member_id = await make_user(
+        "user_demote_plain_member", "demoteplainmember@example.com", "Member"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {member_token}"}
+    )
+
+    response = await client.delete(
+        f"/leagues/{league_id}/admins/{member_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 409
+
+
+async def test_demote_nonmember_returns_404(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_demote_404_owner", "demote404owner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Demote 404 League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    response = await client.delete(
+        f"/leagues/{league_id}/admins/999999", headers={"Authorization": f"Bearer {owner_token}"}
+    )
+
+    assert response.status_code == 404
+
+
+async def test_kick_member_without_token_returns_401(client):
+    response = await client.delete("/leagues/1/members/1")
+
+    assert response.status_code == 401
+
+
+async def test_kick_member_by_admin_succeeds(client, make_user, db_session):
+    owner_token, _owner_id = await make_user(
+        "user_kick_ok_owner", "kickokowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Kick OK League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    member_token, member_id = await make_user(
+        "user_kick_ok_member", "kickokmember@example.com", "Member"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {member_token}"}
+    )
+
+    response = await client.delete(
+        f"/leagues/{league_id}/members/{member_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 204
+
+    active_rows = (
+        (
+            await db_session.execute(
+                select(LeagueUser).where(
+                    LeagueUser.league_id == league_id, LeagueUser.user_id == member_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert active_rows == []
+
+
+async def test_kick_member_by_non_admin_returns_403(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_kick_403_owner", "kick403owner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Kick 403 League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    member_a_token, member_a_id = await make_user(
+        "user_kick_403_a", "kick403a@example.com", "MemberA"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {member_a_token}"}
+    )
+
+    member_b_token, _member_b_id = await make_user(
+        "user_kick_403_b", "kick403b@example.com", "MemberB"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {member_b_token}"}
+    )
+
+    response = await client.delete(
+        f"/leagues/{league_id}/members/{member_a_id}",
+        headers={"Authorization": f"Bearer {member_b_token}"},
+    )
+
+    assert response.status_code == 403
+
+
+async def test_kick_admin_by_non_owner_admin_returns_403(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_kick_admin_403_owner", "kickadmin403owner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Kick Admin 403 League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    admin_token, admin_id = await make_user(
+        "user_kick_admin_403_admin", "kickadmin403admin@example.com", "Admin"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    await client.post(
+        f"/leagues/{league_id}/admins/{admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    other_admin_token, other_admin_id = await make_user(
+        "user_kick_admin_403_other",
+        "kickadmin403other@example.com",
+        "OtherAdmin",
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {other_admin_token}"}
+    )
+    await client.post(
+        f"/leagues/{league_id}/admins/{other_admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    response = await client.delete(
+        f"/leagues/{league_id}/members/{admin_id}",
+        headers={"Authorization": f"Bearer {other_admin_token}"},
+    )
+
+    assert response.status_code == 403
+
+
+async def test_kick_admin_by_owner_succeeds(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_kick_admin_ok_owner", "kickadminokowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Kick Admin OK League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    admin_token, admin_id = await make_user(
+        "user_kick_admin_ok_admin", "kickadminokadmin@example.com", "Admin"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    await client.post(
+        f"/leagues/{league_id}/admins/{admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    response = await client.delete(
+        f"/leagues/{league_id}/members/{admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 204
+
+
+async def test_kick_owner_returns_403(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_kick_owner_403", "kickowner403@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Kick Owner League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+    owner_id = create_response.json()["created_by"]
+
+    second_admin_token, second_admin_id = await make_user(
+        "user_kick_owner_403_second", "kickowner403second@example.com", "Second"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {second_admin_token}"}
+    )
+    await client.post(
+        f"/leagues/{league_id}/admins/{second_admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    response = await client.delete(
+        f"/leagues/{league_id}/members/{owner_id}",
+        headers={"Authorization": f"Bearer {second_admin_token}"},
+    )
+
+    assert response.status_code == 403
+
+
+async def test_self_kick_returns_409(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_selfkick_409", "selfkick409@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Self Kick League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+    owner_id = create_response.json()["created_by"]
+
+    response = await client.delete(
+        f"/leagues/{league_id}/members/{owner_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 409
+
+
+async def test_kick_nonmember_returns_404(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_kick_404_owner", "kick404owner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Kick 404 League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    response = await client.delete(
+        f"/leagues/{league_id}/members/999999", headers={"Authorization": f"Bearer {owner_token}"}
+    )
+
+    assert response.status_code == 404
+
+
+async def test_transfer_ownership_without_token_returns_401(client):
+    response = await client.post("/leagues/1/owner", json={"new_owner_id": 1})
+
+    assert response.status_code == 401
+
+
+async def test_transfer_ownership_by_non_owner_returns_403(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_transfer_403_owner", "transfer403owner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Transfer 403 League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    member_token, member_id = await make_user(
+        "user_transfer_403_member", "transfer403member@example.com", "Member"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {member_token}"}
+    )
+
+    response = await client.post(
+        f"/leagues/{league_id}/owner",
+        json={"new_owner_id": member_id},
+        headers={"Authorization": f"Bearer {member_token}"},
+    )
+
+    assert response.status_code == 403
+
+
+async def test_transfer_ownership_to_member_succeeds(client, make_user, db_session):
+    owner_token, _owner_id = await make_user(
+        "user_transfer_ok_owner", "transferokowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Transfer OK League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    member_token, member_id = await make_user(
+        "user_transfer_ok_member", "transferokmember@example.com", "Member"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {member_token}"}
+    )
+
+    response = await client.post(
+        f"/leagues/{league_id}/owner",
+        json={"new_owner_id": member_id},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["owner_id"] == member_id
+
+    league = await db_session.get(League, league_id)
+    assert league.owner_id == member_id
+
+    membership = (
+        await db_session.execute(
+            select(LeagueUser).where(
+                LeagueUser.league_id == league_id, LeagueUser.user_id == member_id
+            )
+        )
+    ).scalar_one()
+    assert membership.role == "admin"
+
+
+async def test_transfer_ownership_to_existing_admin_succeeds(client, make_user, db_session):
+    owner_token, _owner_id = await make_user(
+        "user_transfer_admin_owner",
+        "transferadminowner@example.com",
+        "Owner",
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Transfer Admin League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    admin_token, admin_id = await make_user(
+        "user_transfer_admin_target",
+        "transferadmintarget@example.com",
+        "Admin",
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    await client.post(
+        f"/leagues/{league_id}/admins/{admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    response = await client.post(
+        f"/leagues/{league_id}/owner",
+        json={"new_owner_id": admin_id},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["owner_id"] == admin_id
+
+    membership = (
+        await db_session.execute(
+            select(LeagueUser).where(
+                LeagueUser.league_id == league_id, LeagueUser.user_id == admin_id
+            )
+        )
+    ).scalar_one()
+    assert membership.role == "admin"
+
+
+async def test_transfer_ownership_to_nonmember_returns_404(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_transfer_404_owner", "transfer404owner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Transfer 404 League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    response = await client.post(
+        f"/leagues/{league_id}/owner",
+        json={"new_owner_id": 999999},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 404
+
+
+async def test_transfer_ownership_to_self_returns_409(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_transfer_409_owner", "transfer409owner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Transfer 409 League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+    owner_id = create_response.json()["created_by"]
+
+    response = await client.post(
+        f"/leagues/{league_id}/owner",
+        json={"new_owner_id": owner_id},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 409
+
+
+async def test_owner_leave_without_transfer_returns_409(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_leave_owner_409", "leaveowner409@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Leave Owner League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    response = await client.post(
+        f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {owner_token}"}
+    )
+
+    assert response.status_code == 409
+
+
+async def test_owner_leave_as_sole_member_returns_409(client, make_user):
+    """Same check as above, named explicitly for the AC's 'even when they're the only member'
+    case -- there's no separate code path for it (owner_id doesn't depend on member count), but
+    this pins that behavior against a future regression that adds member-counting logic."""
+    owner_token, _owner_id = await make_user(
+        "user_leave_sole_409", "leavesole409@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Sole Member League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    response = await client.post(
+        f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {owner_token}"}
+    )
+
+    assert response.status_code == 409
+
+
+async def test_owner_can_leave_after_transferring(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_leave_after_transfer_owner",
+        "leaveaftertransferowner@example.com",
+        "Owner",
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Leave After Transfer League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    member_token, member_id = await make_user(
+        "user_leave_after_transfer_member",
+        "leaveaftertransfermember@example.com",
+        "Member",
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {member_token}"}
+    )
+
+    await client.post(
+        f"/leagues/{league_id}/owner",
+        json={"new_owner_id": member_id},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    response = await client.post(
+        f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {owner_token}"}
+    )
+
+    assert response.status_code == 204
+
+
+async def test_non_owner_member_can_still_leave_freely(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_leave_free_owner", "leavefreeowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Leave Freely League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    member_token, _member_id = await make_user(
+        "user_leave_free_member", "leavefreemember@example.com", "Member"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {member_token}"}
+    )
+
+    response = await client.post(
+        f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {member_token}"}
     )
 
     assert response.status_code == 204
