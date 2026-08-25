@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, select
 
 from app.db import get_session
-from app.deps import get_current_user
+from app.deps import require_username
 from app.models import League, LeagueRead, LeagueUser, User
 
 router = APIRouter()
@@ -16,7 +16,7 @@ class LeagueCreate(SQLModel):
 @router.post("/leagues", response_model=LeagueRead)
 async def create_league(
     body: LeagueCreate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> League:
     league = League(name=body.name, created_by=user.id)
@@ -32,7 +32,7 @@ async def create_league(
 @router.get("/leagues/{league_id}", response_model=LeagueRead)
 async def get_league(
     league_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> League:
     league = (
@@ -46,7 +46,7 @@ async def get_league(
 @router.post("/leagues/{league_id}/join", status_code=status.HTTP_204_NO_CONTENT)
 async def join_league(
     league_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> None:
     league = (
@@ -75,7 +75,7 @@ async def join_league(
 @router.post("/leagues/{league_id}/leave", status_code=status.HTTP_204_NO_CONTENT)
 async def leave_league(
     league_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> None:
     league = (

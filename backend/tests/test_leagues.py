@@ -9,10 +9,27 @@ async def test_create_league_without_token_returns_401(client):
     assert response.status_code == 401
 
 
-async def test_create_league_creates_league_and_membership(client, make_clerk_token, db_session):
+async def test_create_league_without_username_returns_403(client, make_clerk_token):
+    """Regression test for the require_username gate itself (test_deps.py only exercises
+    it as a bare unit, and the cascade test in test_events.py only covers the
+    require_admin path) -- a plain authenticated-but-not-onboarded user must be blocked on
+    a route that depends on require_username directly, with no require_admin involved."""
     token = make_clerk_token(
-        clerk_id="user_league_creator", email="creator@example.com", name="Creator"
+        clerk_id="user_league_no_username", email="leaguenousername@example.com", name="No Username"
     )
+    await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    response = await client.post(
+        "/leagues",
+        json={"name": "Head of the Charles"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 403
+
+
+async def test_create_league_creates_league_and_membership(client, make_user, db_session):
+    token, _creator_id = await make_user("user_league_creator", "creator@example.com", "Creator")
 
     response = await client.post(
         "/leagues",
@@ -39,11 +56,11 @@ async def test_create_league_creates_league_and_membership(client, make_clerk_to
     assert membership_rows[0].user_id == body["created_by"]
 
 
-async def test_create_league_response_excludes_internal_fields(client, make_clerk_token):
+async def test_create_league_response_excludes_internal_fields(client, make_user):
     """LeagueRead is the response shape, not the League table model -- soft-delete
     bookkeeping columns must not be exposed to API consumers."""
-    token = make_clerk_token(
-        clerk_id="user_league_read_shape", email="readshape@example.com", name="Read Shape"
+    token, _creator_id = await make_user(
+        "user_league_read_shape", "readshape@example.com", "Read Shape"
     )
 
     response = await client.post(
@@ -62,10 +79,8 @@ async def test_get_league_without_token_returns_401(client):
     assert response.status_code == 401
 
 
-async def test_get_league_returns_created_league(client, make_clerk_token):
-    token = make_clerk_token(
-        clerk_id="user_league_getter", email="getter@example.com", name="Getter"
-    )
+async def test_get_league_returns_created_league(client, make_user):
+    token, _creator_id = await make_user("user_league_getter", "getter@example.com", "Getter")
     create_response = await client.post(
         "/leagues", json={"name": "Boston Sprints"}, headers={"Authorization": f"Bearer {token}"}
     )
@@ -81,21 +96,17 @@ async def test_get_league_returns_created_league(client, make_clerk_token):
     assert set(body.keys()) == {"id", "name", "created_by"}
 
 
-async def test_get_nonexistent_league_returns_404(client, make_clerk_token):
-    token = make_clerk_token(
-        clerk_id="user_league_missing", email="missing@example.com", name="Missing"
-    )
+async def test_get_nonexistent_league_returns_404(client, make_user):
+    token, _creator_id = await make_user("user_league_missing", "missing@example.com", "Missing")
 
     response = await client.get("/leagues/999999", headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == 404
 
 
-async def test_get_soft_deleted_league_returns_404(client, make_clerk_token, db_session):
-    from app.models import League
-
-    token = make_clerk_token(
-        clerk_id="user_league_soft_delete", email="softdel@example.com", name="SoftDel"
+async def test_get_soft_deleted_league_returns_404(client, make_user, db_session):
+    token, _creator_id = await make_user(
+        "user_league_soft_delete", "softdel@example.com", "SoftDel"
     )
     create_response = await client.post(
         "/leagues",
@@ -121,9 +132,9 @@ async def test_join_league_without_token_returns_401(client):
     assert response.status_code == 401
 
 
-async def test_join_nonexistent_league_returns_404(client, make_clerk_token):
-    token = make_clerk_token(
-        clerk_id="user_join_missing_league", email="joinmissing@example.com", name="Join Missing"
+async def test_join_nonexistent_league_returns_404(client, make_user):
+    token, _creator_id = await make_user(
+        "user_join_missing_league", "joinmissing@example.com", "Join Missing"
     )
 
     response = await client.post(
@@ -133,9 +144,9 @@ async def test_join_nonexistent_league_returns_404(client, make_clerk_token):
     assert response.status_code == 404
 
 
-async def test_join_league_creates_active_membership(client, make_clerk_token, db_session):
-    creator_token = make_clerk_token(
-        clerk_id="user_join_creator", email="joincreator@example.com", name="Join Creator"
+async def test_join_league_creates_active_membership(client, make_user, db_session):
+    creator_token, _creator_id = await make_user(
+        "user_join_creator", "joincreator@example.com", "Join Creator"
     )
     create_response = await client.post(
         "/leagues",
@@ -144,17 +155,14 @@ async def test_join_league_creates_active_membership(client, make_clerk_token, d
     )
     league_id = create_response.json()["id"]
 
-    joiner_token = make_clerk_token(
-        clerk_id="user_join_joiner", email="joinjoiner@example.com", name="Join Joiner"
+    joiner_token, joiner_id = await make_user(
+        "user_join_joiner", "joinjoiner@example.com", "Join Joiner"
     )
     join_response = await client.post(
         f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {joiner_token}"}
     )
 
     assert join_response.status_code == 204
-
-    me_response = await client.get("/me", headers={"Authorization": f"Bearer {joiner_token}"})
-    joiner_id = me_response.json()["id"]
 
     membership_rows = (
         (
@@ -171,11 +179,9 @@ async def test_join_league_creates_active_membership(client, make_clerk_token, d
     assert membership_rows[0].deleted_at is None
 
 
-async def test_join_league_already_active_member_is_idempotent(
-    client, make_clerk_token, db_session
-):
-    token = make_clerk_token(
-        clerk_id="user_join_idempotent", email="joinidempotent@example.com", name="Join Idempotent"
+async def test_join_league_already_active_member_is_idempotent(client, make_user, db_session):
+    token, creator_id = await make_user(
+        "user_join_idempotent", "joinidempotent@example.com", "Join Idempotent"
     )
     create_response = await client.post(
         "/leagues",
@@ -183,7 +189,6 @@ async def test_join_league_already_active_member_is_idempotent(
         headers={"Authorization": f"Bearer {token}"},
     )
     league_id = create_response.json()["id"]
-    creator_id = create_response.json()["created_by"]
 
     join_response = await client.post(
         f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {token}"}
@@ -205,9 +210,9 @@ async def test_join_league_already_active_member_is_idempotent(
     assert len(membership_rows) == 1
 
 
-async def test_rejoin_after_leave_resurrects_same_row(client, make_clerk_token, db_session):
-    creator_token = make_clerk_token(
-        clerk_id="user_rejoin_creator", email="rejoincreator@example.com", name="Rejoin Creator"
+async def test_rejoin_after_leave_resurrects_same_row(client, make_user, db_session):
+    creator_token, _creator_id = await make_user(
+        "user_rejoin_creator", "rejoincreator@example.com", "Rejoin Creator"
     )
     create_response = await client.post(
         "/leagues",
@@ -216,15 +221,12 @@ async def test_rejoin_after_leave_resurrects_same_row(client, make_clerk_token, 
     )
     league_id = create_response.json()["id"]
 
-    joiner_token = make_clerk_token(
-        clerk_id="user_rejoin_joiner", email="rejoinjoiner@example.com", name="Rejoin Joiner"
+    joiner_token, joiner_id = await make_user(
+        "user_rejoin_joiner", "rejoinjoiner@example.com", "Rejoin Joiner"
     )
     await client.post(
         f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {joiner_token}"}
     )
-
-    me_response = await client.get("/me", headers={"Authorization": f"Bearer {joiner_token}"})
-    joiner_id = me_response.json()["id"]
 
     original_membership = (
         await db_session.execute(
@@ -267,11 +269,9 @@ async def test_leave_league_without_token_returns_401(client):
     assert response.status_code == 401
 
 
-async def test_leave_nonexistent_league_returns_404(client, make_clerk_token):
-    token = make_clerk_token(
-        clerk_id="user_leave_missing_league",
-        email="leavemissing@example.com",
-        name="Leave Missing",
+async def test_leave_nonexistent_league_returns_404(client, make_user):
+    token, _creator_id = await make_user(
+        "user_leave_missing_league", "leavemissing@example.com", "Leave Missing"
     )
 
     response = await client.post(
@@ -281,9 +281,9 @@ async def test_leave_nonexistent_league_returns_404(client, make_clerk_token):
     assert response.status_code == 404
 
 
-async def test_leave_league_soft_deletes_membership(client, make_clerk_token, db_session):
-    token = make_clerk_token(
-        clerk_id="user_leave_member", email="leavemember@example.com", name="Leave Member"
+async def test_leave_league_soft_deletes_membership(client, make_user, db_session):
+    token, member_id = await make_user(
+        "user_leave_member", "leavemember@example.com", "Leave Member"
     )
     create_response = await client.post(
         "/leagues",
@@ -291,7 +291,6 @@ async def test_leave_league_soft_deletes_membership(client, make_clerk_token, db
         headers={"Authorization": f"Bearer {token}"},
     )
     league_id = create_response.json()["id"]
-    member_id = create_response.json()["created_by"]
 
     leave_response = await client.post(
         f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {token}"}
@@ -327,9 +326,9 @@ async def test_leave_league_soft_deletes_membership(client, make_clerk_token, db
     assert all_rows[0].deleted_at is not None
 
 
-async def test_leave_league_never_joined_is_noop(client, make_clerk_token):
-    creator_token = make_clerk_token(
-        clerk_id="user_leave_noop_creator", email="leavenoopcreator@example.com", name="Creator"
+async def test_leave_league_never_joined_is_noop(client, make_user):
+    creator_token, _creator_id = await make_user(
+        "user_leave_noop_creator", "leavenoopcreator@example.com", "Creator"
     )
     create_response = await client.post(
         "/leagues",
@@ -338,10 +337,8 @@ async def test_leave_league_never_joined_is_noop(client, make_clerk_token):
     )
     league_id = create_response.json()["id"]
 
-    bystander_token = make_clerk_token(
-        clerk_id="user_leave_noop_bystander",
-        email="leavenoopbystander@example.com",
-        name="Bystander",
+    bystander_token, _bystander_id = await make_user(
+        "user_leave_noop_bystander", "leavenoopbystander@example.com", "Bystander"
     )
     response = await client.post(
         f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {bystander_token}"}
