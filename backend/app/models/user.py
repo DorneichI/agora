@@ -1,13 +1,17 @@
+import re
+
 from sqlalchemy import Index, text
 from sqlmodel import Field, SQLModel
 
 from app.soft_delete import SoftDeleteMixin
 
+USERNAME_PATTERN = re.compile(r"^[a-z0-9_]{3,20}$")
+
 
 class User(SoftDeleteMixin, table=True):
     clerk_id: str = Field()
     email: str = Field()
-    display_name: str = Field()
+    username: str | None = Field(default=None)
     role: str = Field(default="user")
 
     __table_args__ = (
@@ -20,6 +24,12 @@ class User(SoftDeleteMixin, table=True):
         Index(
             "ix_user_email_active",
             "email",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index(
+            "ix_user_username_active",
+            "username",
             unique=True,
             postgresql_where=text("deleted_at IS NULL"),
         ),
@@ -36,5 +46,5 @@ class UserRead(SQLModel):
     id: int
     clerk_id: str
     email: str
-    display_name: str
+    username: str | None
     role: str

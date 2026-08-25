@@ -6,7 +6,7 @@ from app.models import User
 
 
 async def test_require_admin_rejects_regular_user():
-    user = User(clerk_id="user_regular", email="regular@example.com", display_name="Regular")
+    user = User(clerk_id="user_regular", email="regular@example.com")
 
     with pytest.raises(HTTPException) as exc_info:
         await require_admin(user=user)
@@ -18,7 +18,6 @@ async def test_require_admin_allows_admin_user():
     user = User(
         clerk_id="user_admin",
         email="admin@example.com",
-        display_name="Admin",
         role="admin",
     )
 

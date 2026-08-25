@@ -25,19 +25,15 @@ def get_current_claims(
 
 async def _resync_profile_from_claims(session: AsyncSession, user: User, claims: dict) -> User:
     """Clerk is the source of truth for profile fields, so refresh a returning user's
-    stored email/display_name from the presented token's claims. Best-effort: a token
-    missing these claims (e.g. a claims-template regression) shouldn't break login for an
+    stored email from the presented token's claims. Best-effort: a token missing this
+    claim (e.g. a claims-template regression) shouldn't break login for an
     already-provisioned account, so just leave the stored profile untouched in that case.
     """
     email = claims.get("email")
-    display_name = claims.get("name")
-    if email is None or display_name is None:
-        return user
-    if user.email == email and user.display_name == display_name:
+    if email is None or user.email == email:
         return user
 
     user.email = email
-    user.display_name = display_name
     session.add(user)
     await session.commit()
     await session.refresh(user)
@@ -58,10 +54,9 @@ async def get_current_user(
 
     try:
         email = claims["email"]
-        display_name = claims["name"]
     except KeyError as exc:
-        # Expected if Clerk's session-token template hasn't been customized to add these
-        # claims (see docs/architecture.md#auth) -- surface a clear error instead of a bare
+        # Expected if Clerk's session-token template hasn't been customized to add this
+        # claim (see docs/architecture.md#auth) -- surface a clear error instead of a bare
         # 500 from an uncaught KeyError.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -69,7 +64,7 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
-    user = User(clerk_id=clerk_id, email=email, display_name=display_name)
+    user = User(clerk_id=clerk_id, email=email)
     session.add(user)
     try:
         await session.commit()
