@@ -14,9 +14,31 @@ router = APIRouter()
 
 INVITE_LIFETIME = timedelta(days=7)
 
+# Postgres SQLSTATE for a unique-constraint violation.
+_UNIQUE_VIOLATION_SQLSTATE = "23505"
+
 
 class InviteCreate(SQLModel):
     target_username: str | None = None
+
+
+def _is_invite_code_collision(exc: IntegrityError) -> bool:
+    """Distinguish "the generated code collided with the partial unique index" from any
+    other IntegrityError (e.g. a bad FK) so the retry loop below only retries the case it
+    actually knows how to recover from.
+
+    SQLAlchemy's asyncpg dialect wraps the driver error and re-raises it with
+    `raise translated_error from error`, so the original `asyncpg.exceptions.
+    UniqueViolationError` -- which carries the Postgres diagnostic fields `sqlstate` and
+    `constraint_name` -- is available via `exc.orig.__cause__`. `exc.orig` itself (SQLAlchemy's
+    thin DBAPI wrapper) only exposes `sqlstate`/`pgcode`, not `constraint_name`. Verified
+    empirically against a real Postgres/asyncpg unique-violation.
+    """
+    cause = getattr(exc.orig, "__cause__", None)
+    return (
+        getattr(cause, "sqlstate", None) == _UNIQUE_VIOLATION_SQLSTATE
+        and getattr(cause, "constraint_name", None) == "ix_leagueinvite_code_active"
+    )
 
 
 @router.post("/leagues/{league_id}/invites", response_model=LeagueInviteRead)
@@ -64,20 +86,30 @@ async def create_invite(
             )
         target_user_id = target_user.id
 
+    # Captured once, before the loop: a collision's rollback (below) expires every ORM
+    # object tracked by this request's session, including `user`. Re-reading `user.id`
+    # inside the loop after that would be a synchronous lazy-load on an expired attribute,
+    # which raises MissingGreenlet outside of an awaited call. Reusing this plain int
+    # instead sidesteps that -- it needs no DB round trip and doesn't change between
+    # attempts anyway.
+    created_by = user.id
+
     for _attempt in range(5):
         invite = LeagueInvite(
             league_id=league_id,
             code=secrets.token_urlsafe(32),
-            created_by=user.id,
+            created_by=created_by,
             target_user_id=target_user_id,
             expires_at=datetime.now(UTC) + INVITE_LIFETIME,
         )
         session.add(invite)
         try:
             await session.commit()
-        except IntegrityError:
+        except IntegrityError as exc:
             await session.rollback()
-            continue
+            if _is_invite_code_collision(exc):
+                continue
+            raise
         await session.refresh(invite)
         return invite
 

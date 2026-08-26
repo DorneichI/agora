@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 from sqlmodel import select
 
 from app.models import LeagueInvite
@@ -263,3 +265,40 @@ async def test_create_invite_private_league_valid_target_succeeds(client, make_u
     )
     assert len(invite_rows) == 1
     assert invite_rows[0].expires_at is not None
+
+
+async def test_create_invite_retries_on_code_collision(client, make_user, db_session, monkeypatch):
+    """Pre-seed an existing invite with a fixed code, then force the code-generation loop
+    to draw that same code first (colliding with the partial unique index) before a fresh
+    one -- proving the retry loop's collision path is actually exercised, not just that the
+    happy path works."""
+    from app.routers import invites as invites_module
+
+    owner_token, owner_id = await make_user("user_inv_owner_11", "invowner11@example.com", "Owner")
+    league_id = await _create_league(client, owner_token, "Invite League 11")
+    await _make_league_public(client, owner_token, league_id)
+
+    colliding_code = "colliding-fixed-code"
+    fresh_code = "fresh-distinct-code"
+    codes = iter([colliding_code, fresh_code])
+    monkeypatch.setattr(invites_module.secrets, "token_urlsafe", lambda _n: next(codes))
+
+    existing_invite = LeagueInvite(
+        league_id=league_id,
+        code=colliding_code,
+        created_by=owner_id,
+        expires_at=datetime.now(UTC) + timedelta(days=7),
+    )
+    db_session.add(existing_invite)
+    await db_session.commit()
+
+    response = await client.post(
+        f"/leagues/{league_id}/invites",
+        json={},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["code"] == fresh_code
+    assert body["code"] != colliding_code
