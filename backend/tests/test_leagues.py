@@ -4,11 +4,12 @@ from app.models import League, LeagueUser
 
 
 async def _make_league_public(client, token, league_id):
-    await client.patch(
+    response = await client.patch(
         f"/leagues/{league_id}",
         json={"visibility": "public"},
         headers={"Authorization": f"Bearer {token}"},
     )
+    assert response.status_code == 200
 
 
 async def test_create_league_without_token_returns_401(client):
@@ -1471,3 +1472,49 @@ async def test_join_private_league_returns_403(client, make_user):
 
     assert response.status_code == 403
     assert response.json()["detail"] == "This league is not public"
+
+
+async def test_patch_league_admin_can_change_invite_policy_under_admins_only(
+    client, make_user, db_session
+):
+    owner_token, _owner_id = await make_user(
+        "user_patch_ip_owner", "patchipowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Patch Invite Policy League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    admin_token, admin_id = await make_user(
+        "user_patch_ip_admin", "patchipadmin@example.com", "Admin"
+    )
+    await _make_league_public(client, owner_token, league_id)
+    join_response = await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert join_response.status_code == 204
+    promote_response = await client.post(
+        f"/leagues/{league_id}/admins/{admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert promote_response.status_code == 200
+    settings_response = await client.patch(
+        f"/leagues/{league_id}",
+        json={"settings_policy": "admins_only"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert settings_response.status_code == 200
+
+    response = await client.patch(
+        f"/leagues/{league_id}",
+        json={"invite_policy": "anyone"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["invite_policy"] == "anyone"
+
+    league = await db_session.get(League, league_id)
+    assert league.invite_policy == "anyone"

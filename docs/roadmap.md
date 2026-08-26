@@ -109,10 +109,10 @@ League invites (issues #54, #55). Joining a league becomes gated by visibility a
 instead of the open `POST /leagues/{id}/join` from Phase 2.
 
 - `League` gains `visibility` (`"public"` | `"private"`, default `"private"`), `invite_policy`
-  (`"anyone"` | `"admins_only"` | `"owner_only"`, meaningful only when private), and
-  `settings_policy` (`"owner_only"` | `"admins_only"`, default `"owner_only"`) governing who can
-  change `visibility`/`invite_policy` — `settings_policy` itself can only ever be changed by the
-  owner.
+  (`"anyone"` | `"admins_only"` | `"owner_only"`, default `"owner_only"`, meaningful only when
+  private), and `settings_policy` (`"owner_only"` | `"admins_only"`, default `"owner_only"`)
+  governing who can change `visibility`/`invite_policy` — `settings_policy` itself can only ever
+  be changed by the owner.
 - New `LeagueInvite` table (`code`, `league_id`, `created_by`, `target_user_id` nullable,
   `expires_at`, `redeemed_at`, `revoked_at`). Public leagues get open, unlimited-use links
   (7-day expiry); private leagues get single-use codes targeted at one username (7-day expiry,
