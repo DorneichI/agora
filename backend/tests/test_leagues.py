@@ -1219,6 +1219,7 @@ async def test_patch_league_settings_policy_owner_only_blocks_non_owner_admin(cl
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
 
     admin_token, admin_id = await make_user(
         "user_patch_oo_admin", "patchooadmin@example.com", "Admin"
@@ -1330,6 +1331,7 @@ async def test_patch_league_non_owner_cannot_change_settings_policy_even_under_a
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
 
     admin_token, admin_id = await make_user(
         "user_patch_sp_admin", "patchspadmin@example.com", "Admin"
