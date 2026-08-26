@@ -652,3 +652,210 @@ async def test_redeem_targeted_invite_stays_targeted_after_league_goes_public(cl
         f"/invites/{code}/redeem", headers={"Authorization": f"Bearer {other_token}"}
     )
     assert other_response.status_code == 410
+
+
+async def test_revoke_invite_without_token_returns_401(client):
+    response = await client.delete("/invites/some-code")
+
+    assert response.status_code == 401
+
+
+async def test_revoke_unknown_code_returns_404(client, make_user):
+    token, _user_id = await make_user("user_revoke_1", "revoke1@example.com", "Revoker")
+
+    response = await client.delete(
+        "/invites/does-not-exist", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 404
+
+
+async def test_revoke_by_creator_succeeds(client, make_user, db_session):
+    owner_token, _owner_id = await make_user(
+        "user_revoke_owner_1", "revokeowner1@example.com", "Owner"
+    )
+    league_id = await _create_league(client, owner_token, "Revoke League 1")
+    await _make_league_public(client, owner_token, league_id)
+
+    create_response = await client.post(
+        f"/leagues/{league_id}/invites",
+        json={},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    code = create_response.json()["code"]
+
+    response = await client.delete(
+        f"/invites/{code}", headers={"Authorization": f"Bearer {owner_token}"}
+    )
+
+    assert response.status_code == 204
+    invite = (
+        await db_session.execute(select(LeagueInvite).where(LeagueInvite.code == code))
+    ).scalar_one()
+    assert invite.revoked_at is not None
+
+
+async def test_revoke_by_creator_who_has_left_league_still_succeeds(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_revoke_owner_2", "revokeowner2@example.com", "Owner"
+    )
+    league_id = await _create_league(client, owner_token, "Revoke League 2")
+    await _set_invite_policy(client, owner_token, league_id, "anyone")
+    await _make_league_public(client, owner_token, league_id)
+
+    creator_token, _creator_id = await make_user(
+        "user_revoke_creator_1", "revokecreator1@example.com", "Creator"
+    )
+    await _add_member(client, owner_token, league_id, creator_token)
+
+    create_response = await client.post(
+        f"/leagues/{league_id}/invites",
+        json={},
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    code = create_response.json()["code"]
+
+    leave_response = await client.post(
+        f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {creator_token}"}
+    )
+    assert leave_response.status_code == 204
+
+    response = await client.delete(
+        f"/invites/{code}", headers={"Authorization": f"Bearer {creator_token}"}
+    )
+
+    assert response.status_code == 204
+
+
+async def test_revoke_by_admin_of_someone_elses_invite_succeeds(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_revoke_owner_3", "revokeowner3@example.com", "Owner"
+    )
+    league_id = await _create_league(client, owner_token, "Revoke League 3")
+    await _set_invite_policy(client, owner_token, league_id, "anyone")
+    await _make_league_public(client, owner_token, league_id)
+
+    creator_token, _creator_id = await make_user(
+        "user_revoke_creator_2", "revokecreator2@example.com", "Creator"
+    )
+    await _add_member(client, owner_token, league_id, creator_token)
+
+    create_response = await client.post(
+        f"/leagues/{league_id}/invites",
+        json={},
+        headers={"Authorization": f"Bearer {creator_token}"},
+    )
+    code = create_response.json()["code"]
+
+    response = await client.delete(
+        f"/invites/{code}", headers={"Authorization": f"Bearer {owner_token}"}
+    )
+
+    assert response.status_code == 204
+
+
+async def test_revoke_by_plain_member_who_is_not_creator_returns_403(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_revoke_owner_4", "revokeowner4@example.com", "Owner"
+    )
+    league_id = await _create_league(client, owner_token, "Revoke League 4")
+    await _make_league_public(client, owner_token, league_id)
+
+    create_response = await client.post(
+        f"/leagues/{league_id}/invites",
+        json={},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    code = create_response.json()["code"]
+
+    member_token, _member_id = await make_user(
+        "user_revoke_member_1", "revokemember1@example.com", "Member"
+    )
+    await _add_member(client, owner_token, league_id, member_token)
+
+    response = await client.delete(
+        f"/invites/{code}", headers={"Authorization": f"Bearer {member_token}"}
+    )
+
+    assert response.status_code == 403
+
+
+async def test_revoke_already_revoked_invite_returns_404(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_revoke_owner_5", "revokeowner5@example.com", "Owner"
+    )
+    league_id = await _create_league(client, owner_token, "Revoke League 5")
+    await _make_league_public(client, owner_token, league_id)
+
+    create_response = await client.post(
+        f"/leagues/{league_id}/invites",
+        json={},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    code = create_response.json()["code"]
+
+    first = await client.delete(
+        f"/invites/{code}", headers={"Authorization": f"Bearer {owner_token}"}
+    )
+    assert first.status_code == 204
+
+    second = await client.delete(
+        f"/invites/{code}", headers={"Authorization": f"Bearer {owner_token}"}
+    )
+    assert second.status_code == 404
+
+
+async def test_revoke_already_redeemed_invite_returns_404(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_revoke_owner_6", "revokeowner6@example.com", "Owner"
+    )
+    league_id = await _create_league(client, owner_token, "Revoke League 6")
+
+    target_token, target_id = await make_user(
+        "user_revoke_target_1", "revoketarget1@example.com", "Target"
+    )
+    create_response = await client.post(
+        f"/leagues/{league_id}/invites",
+        json={"target_username": f"user{target_id}"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    code = create_response.json()["code"]
+
+    redeem_response = await client.post(
+        f"/invites/{code}/redeem", headers={"Authorization": f"Bearer {target_token}"}
+    )
+    assert redeem_response.status_code == 204
+
+    response = await client.delete(
+        f"/invites/{code}", headers={"Authorization": f"Bearer {owner_token}"}
+    )
+
+    assert response.status_code == 404
+
+
+async def test_revoke_expired_invite_returns_404(client, make_user, db_session):
+    owner_token, _owner_id = await make_user(
+        "user_revoke_owner_7", "revokeowner7@example.com", "Owner"
+    )
+    league_id = await _create_league(client, owner_token, "Revoke League 7")
+    await _make_league_public(client, owner_token, league_id)
+
+    create_response = await client.post(
+        f"/leagues/{league_id}/invites",
+        json={},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    code = create_response.json()["code"]
+
+    invite = (
+        await db_session.execute(select(LeagueInvite).where(LeagueInvite.code == code))
+    ).scalar_one()
+    invite.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    db_session.add(invite)
+    await db_session.commit()
+
+    response = await client.delete(
+        f"/invites/{code}", headers={"Authorization": f"Bearer {owner_token}"}
+    )
+
+    assert response.status_code == 404

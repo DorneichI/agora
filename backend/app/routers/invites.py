@@ -183,3 +183,32 @@ async def redeem_invite(
         session.add(membership)
 
     await session.commit()
+
+
+@router.delete("/invites/{code}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_invite(
+    code: str,
+    user: User = Depends(require_username),
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    invite = (
+        await session.execute(select(LeagueInvite).where(LeagueInvite.code == code))
+    ).scalar_one_or_none()
+    if invite is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found")
+
+    if invite.created_by != user.id:
+        membership = await get_active_league_membership(session, invite.league_id, user.id)
+        if membership is None or membership.role != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not allowed to revoke this invite",
+            )
+
+    now = datetime.now(UTC)
+    if invite.redeemed_at is not None or invite.revoked_at is not None or now > invite.expires_at:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nothing left to revoke")
+
+    invite.revoked_at = now
+    session.add(invite)
+    await session.commit()
