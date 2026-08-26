@@ -122,6 +122,21 @@ async def get_active_league_membership(
     ).scalar_one_or_none()
 
 
+async def require_league_member(
+    league_id: int,
+    user: User = Depends(require_username),
+    session: AsyncSession = Depends(get_session),
+) -> League:
+    league = await get_or_404(session, League, league_id)
+    membership = await get_active_league_membership(session, league_id, user.id)
+    if membership is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="League membership required",
+        )
+    return league
+
+
 async def require_league_admin(
     league_id: int,
     user: User = Depends(require_username),
