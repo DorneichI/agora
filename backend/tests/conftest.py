@@ -9,6 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlmodel import SQLModel
 
+from app.auth.clerk_provider import _jwk_client as _clerk_provider_jwk_client
 from app.clerk import CLERK_ISSUER, _jwk_client
 from app.db import engine, get_session
 from app.main import app
@@ -42,6 +43,9 @@ def _mock_clerk_jwks(monkeypatch, _rsa_keypair):
     jwk_dict.update(kid="test-kid", use="sig", alg="RS256")
     signing_key = jwt.PyJWK.from_json(json.dumps(jwk_dict))
     monkeypatch.setattr(_jwk_client, "get_signing_key_from_jwt", lambda token: signing_key)
+    monkeypatch.setattr(
+        _clerk_provider_jwk_client, "get_signing_key_from_jwt", lambda token: signing_key
+    )
 
 
 @pytest.fixture
