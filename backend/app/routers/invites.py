@@ -2,13 +2,14 @@ import secrets
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, select
 
 from app.db import get_session
 from app.deps import get_active_league_membership, require_league_member, require_username
-from app.models import League, LeagueInvite, LeagueInviteRead, User
+from app.models import League, LeagueInvite, LeagueInviteRead, LeagueUser, User
 
 router = APIRouter()
 
@@ -117,3 +118,71 @@ async def create_invite(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail="Failed to generate a unique invite code",
     )
+
+
+@router.post("/invites/{code}/redeem", status_code=status.HTTP_204_NO_CONTENT)
+async def redeem_invite(
+    code: str,
+    user: User = Depends(require_username),
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    invite = (
+        await session.execute(select(LeagueInvite).where(LeagueInvite.code == code))
+    ).scalar_one_or_none()
+    if invite is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found")
+
+    now = datetime.now(UTC)
+    is_targeted = invite.target_user_id is not None
+
+    if invite.revoked_at is not None or now > invite.expires_at:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE, detail="This invite is no longer valid"
+        )
+    if is_targeted and invite.redeemed_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE, detail="This invite is no longer valid"
+        )
+    if not is_targeted:
+        league = (
+            await session.execute(select(League).where(League.id == invite.league_id))
+        ).scalar_one_or_none()
+        if league is None or league.visibility != "public":
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE, detail="This invite is no longer valid"
+            )
+    if is_targeted and invite.target_user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="This invite is for a different user"
+        )
+
+    if is_targeted:
+        result = await session.execute(
+            update(LeagueInvite)
+            .where(
+                LeagueInvite.id == invite.id,
+                LeagueInvite.redeemed_at.is_(None),
+                LeagueInvite.revoked_at.is_(None),
+            )
+            .values(redeemed_at=now)
+        )
+        if result.rowcount == 0:
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE, detail="This invite is no longer valid"
+            )
+
+    membership = (
+        await session.execute(
+            select(LeagueUser)
+            .where(LeagueUser.league_id == invite.league_id, LeagueUser.user_id == user.id)
+            .execution_options(include_deleted=True)
+        )
+    ).scalar_one_or_none()
+
+    if membership is None:
+        session.add(LeagueUser(league_id=invite.league_id, user_id=user.id))
+    elif membership.deleted_at is not None:
+        membership.deleted_at = None
+        session.add(membership)
+
+    await session.commit()
