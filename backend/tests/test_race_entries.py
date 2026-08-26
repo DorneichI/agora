@@ -1,4 +1,4 @@
-from app.models import RaceEntry
+from app.gameplay.models import RaceEntry
 
 EVENT_PAYLOAD = {
     "name": "Head of the Charles",
