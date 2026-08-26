@@ -3,7 +3,8 @@ from datetime import date
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.models import Event, Race, RaceEntry, Team, User
+from app.gameplay.models import Event, Race, RaceEntry, Team
+from app.models import User
 
 
 async def _make_creator(db_session, clerk_id, email):

@@ -1,4 +1,5 @@
-from app.models import Event, User
+from app.gameplay.models import Event
+from app.models import User
 
 EVENT_PAYLOAD = {
     "name": "Head of the Charles",

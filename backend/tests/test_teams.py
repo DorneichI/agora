@@ -1,4 +1,4 @@
-from app.models import Team
+from app.gameplay.models import Team
 
 
 async def test_create_team_without_token_returns_401(client):

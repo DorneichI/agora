@@ -1,4 +1,4 @@
-from app.models import Venue
+from app.gameplay.models import Venue
 
 
 async def test_create_venue_without_token_returns_401(client):

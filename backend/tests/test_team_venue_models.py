@@ -1,4 +1,5 @@
-from app.models import Team, User, Venue
+from app.gameplay.models import Team, Venue
+from app.models import User
 
 
 async def test_team_has_soft_delete_fields_and_created_by(db_session):

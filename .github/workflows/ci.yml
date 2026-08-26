@@ -57,6 +57,7 @@ jobs:
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run ruff format --check .
+      - run: uv run lint-imports
       # `key` only ever matches on a re-run of the exact same commit; on a normal PR run it's a
       # no-op and `restore-keys`' prefix match (picking the most recently saved entry from main)
       # is what actually restores the baseline.

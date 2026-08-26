@@ -52,6 +52,7 @@ Run from inside `backend/` (locally with `uv`, or via `docker compose exec backe
 uv run pytest              # tests
 uv run ruff check .        # lint
 uv run ruff format --check .  # format check (drop --check to auto-format)
+uv run lint-imports         # import boundary contract (app.leagues must not import app.gameplay)
 uv run alembic upgrade head   # apply migrations
 uv run alembic revision --autogenerate -m "..."  # generate a migration from model changes
 ```
@@ -124,5 +125,8 @@ own package instead of adding another shared cross-cutting layer:
 does not re-export a domain package's symbols -- import them from `app.<domain>.models` directly
 (no backwards-compat shim; see root `CLAUDE.md`'s rule against re-exporting types).
 
-`app/leagues/` is the first module built this way; issue #64 (gameplay extraction) follows the
-same shape.
+`app/leagues/` and `app/gameplay/` are both built this way (issues #63 and #64). The
+`app.leagues` -> `app.gameplay` import direction is forbidden by an `import-linter` contract
+(`[tool.importlinter]` in `pyproject.toml`, enforced in CI via `uv run lint-imports`) so the two
+stay independently removable; the reverse direction (gameplay depending on leagues) is allowed
+and unchecked.

@@ -1,6 +1,7 @@
 from datetime import date
 
-from app.models import Event, Race, User, Venue
+from app.gameplay.models import Event, Race, Venue
+from app.models import User
 
 
 async def test_event_has_soft_delete_fields_and_created_by(db_session):

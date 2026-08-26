@@ -114,7 +114,8 @@ pre-flight before that — don't skip them with `--no-verify`.
 
 ## Linting / formatting
 
-- Backend: `ruff` (lint + format, one tool).
+- Backend: `ruff` (lint + format) + `import-linter` (module-boundary contracts, e.g. `app.leagues`
+  must not import `app.gameplay` — see `backend/CLAUDE.md`'s "Domain modules" section).
 - Web: ESLint (`eslint-config-next`) + Prettier.
 - Mobile: `dart format` + `flutter analyze` (with `flutter_lints`) — Flutter's built-in tools.
 
