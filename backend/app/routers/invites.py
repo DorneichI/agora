@@ -197,6 +197,10 @@ async def revoke_invite(
     if invite is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found")
 
+    # The creator can always revoke their own invite, with no membership check -- that
+    # permission is tied to having created it, not to still being in the league (deliberate,
+    # see docs/superpowers/specs/2026-08-26-league-invite-codes-design.md). Anyone else must be
+    # a *current* active admin/owner of the invite's league.
     if invite.created_by != user.id:
         membership = await get_active_league_membership(session, invite.league_id, user.id)
         if membership is None or membership.role != "admin":
