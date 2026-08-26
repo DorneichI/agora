@@ -1,9 +1,9 @@
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.deps import require_username
 from app.crud_helpers import get_or_404
 from app.db import get_session
-from app.deps import require_username
 from app.leagues.models import League
 from app.leagues.repository import get_active_membership
 from app.models import User

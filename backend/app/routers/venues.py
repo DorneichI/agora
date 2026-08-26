@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, select
 
+from app.auth.deps import require_username
 from app.crud_helpers import assert_not_referenced, get_or_404
 from app.db import get_session
-from app.deps import require_admin, require_username
+from app.deps import require_admin
 from app.models import Event, User, Venue, VenueRead
 
 router = APIRouter()

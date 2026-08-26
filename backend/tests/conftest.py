@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlmodel import SQLModel
 
-from app.clerk import CLERK_ISSUER, _jwk_client
+from app.auth.clerk_provider import CLERK_ISSUER, _jwk_client
 from app.db import engine, get_session
 from app.main import app
 from app.models import User

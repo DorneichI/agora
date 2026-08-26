@@ -10,7 +10,8 @@ write a 403 test.
 
 from fastapi.routing import APIRoute
 
-from app.deps import require_admin, require_username
+from app.auth.deps import require_username
+from app.deps import require_admin
 from app.main import app
 
 # Routes that must be reachable by a user who hasn't set a username yet (or, for /health, by

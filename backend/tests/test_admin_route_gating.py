@@ -11,7 +11,8 @@ also write a 403 test.
 
 from fastapi.routing import APIRoute
 
-from app.deps import get_current_user, require_admin
+from app.auth.deps import get_current_user
+from app.deps import require_admin
 from app.main import app
 
 # Every mutating route on a resource introduced in phases 3/4 must depend on require_admin.

@@ -91,8 +91,8 @@ by `alembic upgrade head` (re-runs every migration from scratch).
   `docs/architecture.md#auth`); the backend only verifies Clerk-issued JWTs.
 - **Authorization**: `User.role` is a plain `str` (`"user"` | `"admin"`, default `"user"`) — no DB
   enum, no Clerk Organizations/Roles. Gate a route to admins only with `Depends(require_admin)`
-  (`app/deps.py`, layered on top of `require_username`, which itself depends on `get_current_user`)
-  rather than checking `user.role` inline in the route body.
+  (`app/deps.py`, layered on top of `require_username`, which itself depends on `get_current_user`
+  — both in `app/auth/deps.py`) rather than checking `user.role` inline in the route body.
 - **Response schemas**: never use a table model directly as a route's `response_model` — pair
   every table with a `*Read` SQLModel (e.g. `UserRead`, `LeagueRead`) that excludes
   `SoftDeleteMixin`'s bookkeeping columns (`created_at`/`updated_at`/`deleted_at`) from the API
@@ -117,8 +117,10 @@ own package instead of adding another shared cross-cutting layer:
 - `app/<domain>/router.py` -- the FastAPI router(s) for this domain, wired into `app/main.py` as
   `from app.<domain>.router import router as <domain>_router`.
 
-`app/deps.py` stays reserved for genuinely generic, cross-domain concerns (currently: Clerk JWT
-verification, `get_current_user`, `require_username`, `require_admin`). `app/models/__init__.py`
+`app/deps.py` stays reserved for genuinely generic, cross-domain concerns (currently just
+`require_admin` — identity verification itself (`get_current_user`, `require_username`) lives in
+`app/auth/deps.py`, behind the `IdentityProvider` port in `app/auth/ports.py`/`clerk_provider.py`).
+`app/models/__init__.py`
 does not re-export a domain package's symbols -- import them from `app.<domain>.models` directly
 (no backwards-compat shim; see root `CLAUDE.md`'s rule against re-exporting types).
 

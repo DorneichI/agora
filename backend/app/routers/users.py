@@ -4,8 +4,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel
 
+from app.auth.deps import get_current_user
 from app.db import get_session
-from app.deps import get_current_user
 from app.models import User, UserRead
 from app.models.user import USERNAME_PATTERN
 

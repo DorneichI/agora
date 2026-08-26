@@ -8,8 +8,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, select
 
+from app.auth.deps import require_username
 from app.db import get_session
-from app.deps import require_username
 from app.leagues.deps import require_league_admin, require_league_member, require_league_owner
 from app.leagues.models import (
     League,
