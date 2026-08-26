@@ -654,6 +654,57 @@ async def test_redeem_targeted_invite_stays_targeted_after_league_goes_public(cl
     assert other_response.status_code == 410
 
 
+async def test_redeem_targeted_invite_resurrects_soft_deleted_membership(
+    client, make_user, db_session
+):
+    owner_token, _owner_id = await make_user(
+        "user_redeem_owner_12", "redeemowner12@example.com", "Owner"
+    )
+    league_id = await _create_league(client, owner_token, "Redeem League 12")
+
+    target_token, target_id = await make_user(
+        "user_redeem_target_6", "redeemtarget6@example.com", "Target"
+    )
+    await _add_member(client, owner_token, league_id, target_token)
+
+    leave_response = await client.post(
+        f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {target_token}"}
+    )
+    assert leave_response.status_code == 204
+
+    membership_before = (
+        await db_session.execute(
+            select(LeagueUser)
+            .where(LeagueUser.league_id == league_id, LeagueUser.user_id == target_id)
+            .execution_options(include_deleted=True)
+        )
+    ).scalar_one()
+    assert membership_before.deleted_at is not None
+    original_membership_id = membership_before.id
+
+    create_response = await client.post(
+        f"/leagues/{league_id}/invites",
+        json={"target_username": f"user{target_id}"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    code = create_response.json()["code"]
+
+    redeem_response = await client.post(
+        f"/invites/{code}/redeem", headers={"Authorization": f"Bearer {target_token}"}
+    )
+
+    assert redeem_response.status_code == 204
+    membership_after = (
+        await db_session.execute(
+            select(LeagueUser).where(
+                LeagueUser.league_id == league_id, LeagueUser.user_id == target_id
+            )
+        )
+    ).scalar_one()
+    assert membership_after.id == original_membership_id
+    assert membership_after.deleted_at is None
+
+
 async def test_revoke_invite_without_token_returns_401(client):
     response = await client.delete("/invites/some-code")
 
