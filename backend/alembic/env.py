@@ -27,6 +27,7 @@ if database_url:
 from sqlmodel import SQLModel  # noqa: E402
 
 from app import models  # noqa: E402,F401  (import registers User on SQLModel.metadata)
+from app.leagues import models as league_models  # noqa: E402,F401 (registers league tables)
 
 target_metadata = SQLModel.metadata
 

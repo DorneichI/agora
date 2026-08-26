@@ -1,7 +1,8 @@
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.models import League, LeagueUser, User
+from app.leagues.models import League, LeagueUser
+from app.models import User
 
 
 async def test_leagueuser_role_defaults_to_member(db_session):

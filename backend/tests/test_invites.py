@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlmodel import select
 
-from app.models import LeagueInvite, LeagueUser
+from app.leagues.models import LeagueInvite, LeagueUser
 
 
 async def _make_league_public(client, token, league_id):
@@ -272,7 +272,7 @@ async def test_create_invite_retries_on_code_collision(client, make_user, db_ses
     to draw that same code first (colliding with the partial unique index) before a fresh
     one -- proving the retry loop's collision path is actually exercised, not just that the
     happy path works."""
-    from app.routers import invites as invites_module
+    from app.leagues import router as invites_module
 
     owner_token, owner_id = await make_user("user_inv_owner_11", "invowner11@example.com", "Owner")
     league_id = await _create_league(client, owner_token, "Invite League 11")

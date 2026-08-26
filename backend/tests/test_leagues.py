@@ -1,6 +1,6 @@
 from sqlmodel import select
 
-from app.models import League, LeagueUser
+from app.leagues.models import League, LeagueUser
 
 
 async def _make_league_public(client, token, league_id):
