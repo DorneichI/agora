@@ -1,12 +1,12 @@
 from fastapi import FastAPI
 
-from app.routers import events, health, invites, leagues, race_entries, races, teams, users, venues
+from app.leagues.router import router as leagues_router
+from app.routers import events, health, race_entries, races, teams, users, venues
 
 app = FastAPI(title="Agora API")
 app.include_router(health.router)
 app.include_router(users.router)
-app.include_router(leagues.router)
-app.include_router(invites.router)
+app.include_router(leagues_router)
 app.include_router(teams.router)
 app.include_router(venues.router)
 app.include_router(events.router)

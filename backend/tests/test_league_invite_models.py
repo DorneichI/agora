@@ -3,7 +3,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.models import League, LeagueInvite, User
+from app.leagues.models import League, LeagueInvite
+from app.models import User
 
 
 async def _make_league(db_session, clerk_id, email):
