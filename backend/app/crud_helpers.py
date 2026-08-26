@@ -1,4 +1,5 @@
-"""Shared helpers for the plain-CRUD routers (events, races, race_entries, teams, venues).
+"""Shared helpers for the plain-CRUD routers across domains (currently `app.leagues` and
+`app.gameplay`).
 
 Each of those routers repeated the same three shapes by hand; this module gives them one
 place to share instead of drifting independently:
