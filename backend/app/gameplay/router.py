@@ -4,12 +4,13 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import SQLModel, select
+from sqlmodel import SQLModel
 
 from app.auth.deps import require_username
 from app.crud_helpers import assert_not_referenced, get_or_404, validate_fk_exists
 from app.db import get_session
 from app.deps import require_admin
+from app.gameplay import repository
 from app.gameplay.models import (
     Event,
     EventRead,
@@ -66,7 +67,7 @@ async def list_teams(
     user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> list[Team]:
-    return list((await session.execute(select(Team))).scalars().all())
+    return await repository.list_teams(session)
 
 
 class TeamUpdate(SQLModel):
@@ -145,7 +146,7 @@ async def list_venues(
     user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> list[Venue]:
-    return list((await session.execute(select(Venue))).scalars().all())
+    return await repository.list_venues(session)
 
 
 class VenueUpdate(SQLModel):
@@ -248,7 +249,7 @@ async def list_events(
     user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> list[Event]:
-    return list((await session.execute(select(Event))).scalars().all())
+    return await repository.list_events(session)
 
 
 class EventUpdate(SQLModel):
@@ -345,7 +346,7 @@ async def list_races(
     user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> list[Race]:
-    return list((await session.execute(select(Race))).scalars().all())
+    return await repository.list_races(session)
 
 
 class RaceUpdate(SQLModel):
@@ -448,7 +449,7 @@ async def list_race_entries(
     user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> list[RaceEntry]:
-    return list((await session.execute(select(RaceEntry))).scalars().all())
+    return await repository.list_race_entries(session)
 
 
 class RaceEntryUpdate(SQLModel):
