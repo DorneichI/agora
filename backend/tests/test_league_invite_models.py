@@ -58,7 +58,7 @@ async def test_duplicate_active_code_rejected(db_session):
         await db_session.commit()
 
 
-async def test_code_reusable_after_hard_delete_by_partial_index(db_session):
+async def test_code_reusable_after_soft_delete_by_partial_index(db_session):
     """Not a real-world scenario (revoke never calls session.delete on the row), but proves the
     unique index is scoped to deleted_at IS NULL rather than a plain unique constraint, matching
     every other soft-deletable table's convention."""
