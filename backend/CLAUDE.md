@@ -99,3 +99,28 @@ by `alembic upgrade head` (re-runs every migration from scratch).
   response.
 - **Route naming for multi-word resources**: kebab-case, e.g. `RaceEntry` -> `/race-entries`
   (established by issue #44's `race_entries.py` router, the first two-word resource in the API).
+
+## Domain modules
+
+Some resources outgrow "one model file + one router file" once other code needs to depend on
+them without reaching into scattered internals (issue #63 was the first case: leagues, before
+gameplay/chat needed to reference league membership). When that happens, give the resource its
+own package instead of adding another shared cross-cutting layer:
+
+- `app/<domain>/models.py` -- the SQLModel table + `*Read` classes for this domain, replacing
+  what used to live in `app/models/<name>.py`.
+- `app/<domain>/repository.py` -- plain async functions wrapping every
+  `session.execute(select(...))` query this domain's routers/deps need, so no other module has
+  to write a raw query against this domain's tables.
+- `app/<domain>/deps.py` -- any `require_*`/`get_*` FastAPI dependency specific to this domain
+  (e.g. `require_league_member`), moved out of the shared `app/deps.py`.
+- `app/<domain>/router.py` -- the FastAPI router(s) for this domain, wired into `app/main.py` as
+  `from app.<domain>.router import router as <domain>_router`.
+
+`app/deps.py` stays reserved for genuinely generic, cross-domain concerns (currently: Clerk JWT
+verification, `get_current_user`, `require_username`, `require_admin`). `app/models/__init__.py`
+does not re-export a domain package's symbols -- import them from `app.<domain>.models` directly
+(no backwards-compat shim; see root `CLAUDE.md`'s rule against re-exporting types).
+
+`app/leagues/` is the first module built this way; issue #64 (gameplay extraction) follows the
+same shape.
