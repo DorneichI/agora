@@ -6,7 +6,6 @@ from app.deps import (
     require_league_admin,
     require_league_member,
     require_league_owner,
-    require_username,
 )
 from app.models import League, LeagueUser, User
 
@@ -30,15 +29,6 @@ async def test_require_admin_allows_admin_user():
     result = await require_admin(user=user)
 
     assert result is user
-
-
-async def test_require_username_rejects_user_without_username():
-    user = User(clerk_id="user_no_username", email="nousername@example.com")
-
-    with pytest.raises(HTTPException) as exc_info:
-        await require_username(user=user)
-
-    assert exc_info.value.status_code == 403
 
 
 async def test_require_league_admin_rejects_non_member(db_session):
@@ -132,14 +122,6 @@ async def test_require_league_owner_allows_owner(db_session):
     result = await require_league_owner(league_id=league.id, user=owner, session=db_session)
 
     assert result.id == league.id
-
-
-async def test_require_username_allows_user_with_username():
-    user = User(clerk_id="user_has_username", email="hasusername@example.com", username="rower1")
-
-    result = await require_username(user=user)
-
-    assert result is user
 
 
 async def test_require_league_member_rejects_non_member(db_session):

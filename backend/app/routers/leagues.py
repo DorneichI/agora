@@ -4,12 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, select
 
+from app.auth.deps import require_username
 from app.db import get_session
 from app.deps import (
     get_active_league_membership,
     require_league_admin,
     require_league_owner,
-    require_username,
 )
 from app.models import League, LeagueRead, LeagueUser, LeagueUserRead, User
 

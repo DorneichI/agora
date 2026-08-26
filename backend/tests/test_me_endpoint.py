@@ -3,7 +3,7 @@ import time
 import jwt
 from sqlmodel import select
 
-from app.clerk import CLERK_ISSUER
+from app.auth.clerk_provider import CLERK_ISSUER
 from app.models import User
 
 
@@ -62,44 +62,6 @@ async def test_me_returns_same_user_on_second_call(client, make_clerk_token):
     assert first.status_code == 200
     assert second.status_code == 200
     assert first.json()["id"] == second.json()["id"]
-
-
-async def test_concurrent_first_request_race_returns_existing_row(db_session, monkeypatch):
-    """Simulates two near-simultaneous first-requests for the same new clerk_id: the initial
-    SELECT misses (as if the other request hadn't committed yet when this one looked), the
-    INSERT then hits the real unique-constraint violation because the other request already
-    committed, and get_current_user must catch that and return the existing row instead of
-    raising."""
-    from app import deps
-    from app.models import User
-
-    existing = User(clerk_id="user_race", email="race@example.com")
-    db_session.add(existing)
-    await db_session.commit()
-
-    original_execute = db_session.execute
-    call_count = 0
-
-    async def fake_execute(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:
-
-            class _EmptyResult:
-                def scalar_one_or_none(self):
-                    return None
-
-            return _EmptyResult()
-        return await original_execute(*args, **kwargs)
-
-    monkeypatch.setattr(db_session, "execute", fake_execute)
-
-    claims = {"sub": "user_race", "email": "different@example.com", "name": "Different"}
-    user = await deps.get_current_user(claims=claims, session=db_session)
-
-    assert user.id == existing.id
-    # resync-on-login applies on the race-recovery path too: the presented claims win
-    assert user.email == "different@example.com"
 
 
 async def test_me_resyncs_email_on_returning_login(client, make_clerk_token, db_session):

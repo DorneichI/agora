@@ -7,8 +7,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, select
 
+from app.auth.deps import require_username
 from app.db import get_session
-from app.deps import get_active_league_membership, require_league_member, require_username
+from app.deps import get_active_league_membership, require_league_member
 from app.models import League, LeagueInvite, LeagueInviteRead, LeagueUser, User
 
 router = APIRouter()
