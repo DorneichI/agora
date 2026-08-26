@@ -135,22 +135,19 @@ async def redeem_invite(
     now = datetime.now(UTC)
     is_targeted = invite.target_user_id is not None
 
-    if invite.revoked_at is not None or now > invite.expires_at:
-        raise HTTPException(
-            status_code=status.HTTP_410_GONE, detail="This invite is no longer valid"
-        )
-    if is_targeted and invite.redeemed_at is not None:
-        raise HTTPException(
-            status_code=status.HTTP_410_GONE, detail="This invite is no longer valid"
-        )
+    league_no_longer_public = False
     if not is_targeted:
         league = (
             await session.execute(select(League).where(League.id == invite.league_id))
         ).scalar_one_or_none()
-        if league is None or league.visibility != "public":
-            raise HTTPException(
-                status_code=status.HTTP_410_GONE, detail="This invite is no longer valid"
-            )
+        league_no_longer_public = league is None or league.visibility != "public"
+
+    invite_is_dead = invite.revoked_at is not None or now > invite.expires_at
+    invite_already_redeemed = is_targeted and invite.redeemed_at is not None
+    if invite_is_dead or invite_already_redeemed or league_no_longer_public:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE, detail="This invite is no longer valid"
+        )
     if is_targeted and invite.target_user_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="This invite is for a different user"
