@@ -92,3 +92,17 @@ async def test_rejoin_after_leave_allowed_by_partial_index(db_session):
 
     assert second_membership.id is not None
     assert second_membership.id != first_membership.id
+
+
+async def test_league_defaults_visibility_and_policies(db_session):
+    creator = User(clerk_id="user_league_defaults", email="leaguedefaults@example.com")
+    db_session.add(creator)
+    await db_session.commit()
+
+    league = League(name="Default Policy League", created_by=creator.id, owner_id=creator.id)
+    db_session.add(league)
+    await db_session.commit()
+
+    assert league.visibility == "private"
+    assert league.invite_policy == "owner_only"
+    assert league.settings_policy == "owner_only"
