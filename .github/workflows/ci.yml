@@ -62,7 +62,7 @@ jobs:
       # no-op and `restore-keys`' prefix match (picking the most recently saved entry from main)
       # is what actually restores the baseline.
       - name: Restore coverage baseline
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: backend/.coverage-baseline
           key: backend-coverage-baseline-${{ github.sha }}
@@ -95,7 +95,7 @@ jobs:
         run: echo "$BACKEND_COVERAGE" > .coverage-baseline
       - name: Cache coverage baseline
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: backend/.coverage-baseline
           key: backend-coverage-baseline-${{ github.sha }}
@@ -122,7 +122,7 @@ jobs:
       # no-op and `restore-keys`' prefix match (picking the most recently saved entry from main)
       # is what actually restores the baseline.
       - name: Restore coverage baseline
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: web/.coverage-baseline
           key: web-coverage-baseline-${{ github.sha }}
@@ -155,7 +155,7 @@ jobs:
         run: echo "$WEB_COVERAGE" > .coverage-baseline
       - name: Cache coverage baseline
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: web/.coverage-baseline
           key: web-coverage-baseline-${{ github.sha }}
