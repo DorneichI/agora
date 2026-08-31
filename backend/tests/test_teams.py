@@ -269,6 +269,29 @@ async def test_patch_team_can_clear_image_url(client, make_clerk_token, db_sessi
     assert response.json()["image_url"] is None
 
 
+async def test_patch_team_rejects_explicit_null_for_required_field(client, make_admin):
+    """Regression test: `name` is NOT NULL in the DB, but TeamUpdate types every field as
+    `X | None` so a PATCH client can send explicit `null` -- that must be rejected with 422,
+    not forwarded to the database as an unvalidated write that surfaces as a 500."""
+    token, _admin_id = await make_admin(
+        "user_team_patch_null", "teampatchnull@example.com", "Admin"
+    )
+    create_response = await client.post(
+        "/teams",
+        json={"name": "Crimson", "school": "Harvard", "mascot": "Crimson"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    team_id = create_response.json()["id"]
+
+    response = await client.patch(
+        f"/teams/{team_id}",
+        json={"name": None},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422
+
+
 async def test_delete_team_without_token_returns_401(client):
     response = await client.delete("/teams/1")
 

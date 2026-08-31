@@ -28,6 +28,20 @@ from app.models import User
 router = APIRouter()
 
 
+def _reject_null_updates(updates: dict, required_fields: set[str]) -> None:
+    """`exclude_unset=True` keeps a key the client sent as explicit JSON `null` (Pydantic
+    accepts null for every PATCH field since `X | None` is how "field omitted" is
+    represented). For a column that's NOT NULL in the DB, forwarding that null via
+    `setattr` reaches the database as an unvalidated write and surfaces as a raw
+    IntegrityError/500 instead of a 422 -- reject it here before it gets that far."""
+    nulled = sorted(f for f in required_fields if f in updates and updates[f] is None)
+    if nulled:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"{', '.join(nulled)} must not be null",
+        )
+
+
 class TeamCreate(SQLModel):
     name: str
     school: str
@@ -87,6 +101,7 @@ async def update_team(
     team = await get_or_404(session, Team, team_id)
 
     updates = body.model_dump(exclude_unset=True)
+    _reject_null_updates(updates, {"name", "school", "mascot"})
     if updates:
         for field, value in updates.items():
             setattr(team, field, value)
@@ -165,6 +180,7 @@ async def update_venue(
     venue = await get_or_404(session, Venue, venue_id)
 
     updates = body.model_dump(exclude_unset=True)
+    _reject_null_updates(updates, {"name", "location"})
     if updates:
         for field, value in updates.items():
             setattr(venue, field, value)
@@ -272,6 +288,7 @@ async def update_event(
     event = await get_or_404(session, Event, event_id)
 
     updates = body.model_dump(exclude_unset=True)
+    _reject_null_updates(updates, {"name", "description", "format", "start_date", "end_date"})
     if "venue_id" in updates:
         await _validate_venue_id(updates["venue_id"], session)
     if "start_date" in updates or "end_date" in updates:
@@ -365,6 +382,7 @@ async def update_race(
     race = await get_or_404(session, Race, race_id)
 
     updates = body.model_dump(exclude_unset=True)
+    _reject_null_updates(updates, {"boat_class", "level"})
     if updates:
         for field, value in updates.items():
             setattr(race, field, value)
@@ -468,6 +486,7 @@ async def update_race_entry(
     race_entry = await get_or_404(session, RaceEntry, race_entry_id)
 
     updates = body.model_dump(exclude_unset=True)
+    _reject_null_updates(updates, {"level", "status"})
     if updates:
         for field, value in updates.items():
             setattr(race_entry, field, value)

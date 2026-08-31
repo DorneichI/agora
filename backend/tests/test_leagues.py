@@ -153,6 +153,82 @@ async def test_get_soft_deleted_league_returns_404(client, make_user, db_session
     assert response.status_code == 404
 
 
+async def test_get_private_league_by_nonmember_returns_403(client, make_user):
+    """Regression test: GET /leagues/{id} had no access check at all -- any authenticated
+    user could read (and by walking IDs, enumerate) every private league's details."""
+    owner_token, _owner_id = await make_user(
+        "user_league_private_get_owner", "leagueprivategetowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Private Get League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    outsider_token, _outsider_id = await make_user(
+        "user_league_private_get_outsider", "leagueprivategetoutsider@example.com", "Outsider"
+    )
+
+    response = await client.get(
+        f"/leagues/{league_id}", headers={"Authorization": f"Bearer {outsider_token}"}
+    )
+
+    assert response.status_code == 403
+
+
+async def test_get_public_league_by_nonmember_returns_200(client, make_user):
+    owner_token, _owner_id = await make_user(
+        "user_league_public_get_owner", "leaguepublicgetowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Public Get League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
+
+    outsider_token, _outsider_id = await make_user(
+        "user_league_public_get_outsider", "leaguepublicgetoutsider@example.com", "Outsider"
+    )
+
+    response = await client.get(
+        f"/leagues/{league_id}", headers={"Authorization": f"Bearer {outsider_token}"}
+    )
+
+    assert response.status_code == 200
+
+
+async def test_patch_private_league_by_nonmember_with_empty_body_returns_403(client, make_user):
+    """Regression test: the empty-body early return in update_league_settings ran before any
+    permission check, so `PATCH /leagues/{id}` with `{}` leaked the same private-league
+    record GET did."""
+    owner_token, _owner_id = await make_user(
+        "user_league_private_patch_owner", "leagueprivatepatchowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Private Patch League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+
+    outsider_token, _outsider_id = await make_user(
+        "user_league_private_patch_outsider",
+        "leagueprivatepatchoutsider@example.com",
+        "Outsider",
+    )
+
+    response = await client.patch(
+        f"/leagues/{league_id}",
+        json={},
+        headers={"Authorization": f"Bearer {outsider_token}"},
+    )
+
+    assert response.status_code == 403
+
+
 async def test_join_league_without_token_returns_401(client):
     response = await client.post("/leagues/1/join")
 
@@ -239,6 +315,62 @@ async def test_join_league_already_active_member_is_idempotent(client, make_user
     assert len(membership_rows) == 1
 
 
+async def test_join_league_concurrent_insert_race_is_idempotent(
+    client, make_user, db_session, monkeypatch
+):
+    """Regression test: two concurrent join requests for the same user could both miss the
+    existing-membership check before either committed, so the second's INSERT would hit the
+    real partial unique index as an unhandled IntegrityError/500 instead of the intended
+    idempotent 204. Simulated deterministically (true concurrency isn't practical here) by
+    forcing the membership lookup to report "not found" even though an active row already
+    exists, so the real INSERT hits the real unique index."""
+    from app.leagues import router as leagues_module
+
+    owner_token, _owner_id = await make_user(
+        "user_join_race_owner", "joinraceowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Join Race League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
+
+    joiner_token, joiner_id = await make_user(
+        "user_join_race_joiner", "joinracejoiner@example.com", "Joiner"
+    )
+    first_join = await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {joiner_token}"}
+    )
+    assert first_join.status_code == 204
+
+    async def _always_report_no_membership(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        leagues_module, "get_membership_including_deleted", _always_report_no_membership
+    )
+
+    second_join = await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {joiner_token}"}
+    )
+
+    assert second_join.status_code == 204
+    membership_rows = (
+        (
+            await db_session.execute(
+                select(LeagueUser).where(
+                    LeagueUser.league_id == league_id, LeagueUser.user_id == joiner_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(membership_rows) == 1
+
+
 async def test_rejoin_after_leave_resurrects_same_row(client, make_user, db_session):
     creator_token, _creator_id = await make_user(
         "user_rejoin_creator", "rejoincreator@example.com", "Rejoin Creator"
@@ -291,6 +423,53 @@ async def test_rejoin_after_leave_resurrects_same_row(client, make_user, db_sess
     assert len(all_rows) == 1
     assert all_rows[0].id == original_id
     assert all_rows[0].deleted_at is None
+
+
+async def test_rejoin_after_kick_does_not_restore_admin_role(client, make_user, db_session):
+    """Regression test: kicking a member soft-deletes their LeagueUser row without clearing
+    `role`, so an admin who gets kicked and then rejoins a public league used to silently
+    regain admin (join/redeem only cleared `deleted_at`, never reset `role`)."""
+    owner_token, _owner_id = await make_user(
+        "user_rejoin_role_owner", "rejoinroleowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Rejoin Role League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
+
+    admin_token, admin_id = await make_user(
+        "user_rejoin_role_admin", "rejoinroleadmin@example.com", "Admin"
+    )
+    await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    await client.post(
+        f"/leagues/{league_id}/admins/{admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    kick_response = await client.delete(
+        f"/leagues/{league_id}/members/{admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert kick_response.status_code == 204
+
+    rejoin_response = await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert rejoin_response.status_code == 204
+
+    membership = (
+        await db_session.execute(
+            select(LeagueUser).where(
+                LeagueUser.league_id == league_id, LeagueUser.user_id == admin_id
+            )
+        )
+    ).scalar_one()
+    assert membership.role == "member"
 
 
 async def test_leave_league_without_token_returns_401(client):

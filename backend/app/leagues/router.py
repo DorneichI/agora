@@ -58,6 +58,17 @@ class InviteCreate(SQLModel):
     target_username: str | None = None
 
 
+def _is_membership_collision(exc: IntegrityError) -> bool:
+    """Same reasoning as `_is_invite_code_collision` below, but for the partial unique index
+    that guards against a duplicate active `LeagueUser` row (two concurrent join/redeem
+    requests for the same user racing each other)."""
+    cause = getattr(exc.orig, "__cause__", None)
+    return (
+        getattr(cause, "sqlstate", None) == _UNIQUE_VIOLATION_SQLSTATE
+        and getattr(cause, "constraint_name", None) == "ix_leagueuser_league_id_user_id_active"
+    )
+
+
 def _is_invite_code_collision(exc: IntegrityError) -> bool:
     """Distinguish "the generated code collided with the partial unique index" from any
     other IntegrityError (e.g. a bad FK) so the retry loop below only retries the case it
@@ -93,6 +104,18 @@ async def create_league(
     return league
 
 
+async def _require_visible(session: AsyncSession, league: League, user: User) -> None:
+    """Public leagues are readable by anyone; private leagues require active membership."""
+    if league.visibility == "public":
+        return
+    membership = await get_active_membership(session, league.id, user.id)
+    if membership is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="League membership required",
+        )
+
+
 @router.get("/leagues/{league_id}", response_model=LeagueRead)
 async def get_league(
     league_id: int,
@@ -102,6 +125,7 @@ async def get_league(
     league = await get_league_by_id(session, league_id)
     if league is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="League not found")
+    await _require_visible(session, league, user)
     return league
 
 
@@ -115,6 +139,7 @@ async def update_league_settings(
     league = await get_league_by_id(session, league_id)
     if league is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="League not found")
+    await _require_visible(session, league, user)
 
     updates = body.model_dump(exclude_unset=True)
     if not updates:
@@ -167,9 +192,15 @@ async def join_league(
 
     if membership is None:
         session.add(LeagueUser(league_id=league_id, user_id=user.id))
-        await session.commit()
+        try:
+            await session.commit()
+        except IntegrityError as exc:
+            await session.rollback()
+            if not _is_membership_collision(exc):
+                raise
     elif membership.deleted_at is not None:
         membership.deleted_at = None
+        membership.role = "member"
         session.add(membership)
         await session.commit()
 
@@ -337,8 +368,11 @@ async def create_invite(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="target_username is required for a private league invite",
             )
+        # Usernames are always stored lowercased (see UsernameSet's validator in
+        # app/routers/users.py), so normalize the lookup the same way rather than requiring
+        # the inviter to type the exact case the target originally chose.
         target_user = (
-            await session.execute(select(User).where(User.username == body.target_username))
+            await session.execute(select(User).where(User.username == body.target_username.lower()))
         ).scalar_one_or_none()
         if target_user is None:
             raise HTTPException(
@@ -430,9 +464,15 @@ async def redeem_invite(
         session.add(LeagueUser(league_id=invite.league_id, user_id=user.id))
     elif membership.deleted_at is not None:
         membership.deleted_at = None
+        membership.role = "member"
         session.add(membership)
 
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        if not _is_membership_collision(exc):
+            raise
 
 
 @router.delete("/invites/{code}", status_code=status.HTTP_204_NO_CONTENT)

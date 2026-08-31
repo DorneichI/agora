@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   changes:
@@ -23,10 +24,17 @@ jobs:
           filters: |
             backend:
               - 'backend/**'
+              - 'docker-compose.yml'
+              - '.github/workflows/ci.yml'
             web:
               - 'web/**'
+              - 'docker-compose.yml'
+              - '.github/workflows/ci.yml'
             scripts:
               - 'scripts/**'
+              - 'package.json'
+              - 'lefthook.yml'
+              - '.github/workflows/ci.yml'
 
   backend:
     needs: changes
@@ -72,6 +80,10 @@ jobs:
           restore-keys: |
             backend-coverage-baseline-
       - name: Run tests with coverage
+        # Explicit `shell: bash` (rather than relying on the runner's implicit default shell)
+        # is required for `pipefail` -- without it, `tee`'s always-zero exit code is what this
+        # step reports, so a failing test suite would not fail CI.
+        shell: bash
         run: uv run pytest --cov=app --cov-report=term-missing --cov-report=json | tee coverage.txt
       - name: Append coverage to job summary
         if: always()
@@ -132,6 +144,9 @@ jobs:
           restore-keys: |
             web-coverage-baseline-
       - name: Run tests with coverage
+        # See the equivalent backend step for why `shell: bash` is required here: without it,
+        # `tee`'s always-zero exit code -- not the test runner's -- is what this step reports.
+        shell: bash
         run: npm run test -- --coverage | tee coverage.txt
       - name: Append coverage to job summary
         if: always()
@@ -178,9 +193,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check job results
+        # Assert every needed job is success-or-skipped, rather than only scanning for the
+        # literal string "failure" -- that check missed `needs.changes` entirely (so a failed
+        # or cancelled `changes` job left backend/web/scripts all skipped and still reported
+        # green) and treated "cancelled" the same as a pass.
         run: |
-          if [ "${{ needs.backend.result }}" = "failure" ] || [ "${{ needs.web.result }}" = "failure" ] || [ "${{ needs.scripts.result }}" = "failure" ]; then
-            echo "A required job failed."
-            exit 1
-          fi
+          for result in "${{ needs.changes.result }}" "${{ needs.backend.result }}" "${{ needs.web.result }}" "${{ needs.scripts.result }}"; do
+            case "$result" in
+              success|skipped) ;;
+              *)
+                echo "::error::A required job did not pass (result: $result)."
+                exit 1
+                ;;
+            esac
+          done
           echo "All required jobs passed or were skipped."

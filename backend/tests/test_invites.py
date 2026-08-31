@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from sqlmodel import select
 
 from app.leagues.models import LeagueInvite, LeagueUser
+from app.models import User
 
 
 async def _make_league_public(client, token, league_id):
@@ -265,6 +266,35 @@ async def test_create_invite_private_league_valid_target_succeeds(client, make_u
     )
     assert len(invite_rows) == 1
     assert invite_rows[0].expires_at is not None
+
+
+async def test_create_invite_private_league_matches_target_username_case_insensitively(
+    client, make_user, db_session
+):
+    """Regression test: usernames are always stored lowercased (POST /me/username lowercases
+    on write), but the invite lookup compared case-sensitively -- so inviting a real user by
+    any non-lowercase spelling of their username used to 404."""
+    owner_token, _owner_id = await make_user(
+        "user_inv_owner_case", "invownercase@example.com", "Owner"
+    )
+    league_id = await _create_league(client, owner_token, "Invite League Case")
+
+    _target_token, target_id = await make_user(
+        "user_inv_target_case", "invtargetcase@example.com", "Target"
+    )
+    target_user = await db_session.get(User, target_id)
+    target_user.username = "casesensitivetarget"
+    db_session.add(target_user)
+    await db_session.commit()
+
+    response = await client.post(
+        f"/leagues/{league_id}/invites",
+        json={"target_username": "CaseSensitiveTarget"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["target_user_id"] == target_id
 
 
 async def test_create_invite_retries_on_code_collision(client, make_user, db_session, monkeypatch):
@@ -549,6 +579,63 @@ async def test_redeem_already_active_member_is_idempotent(client, make_user):
     assert response.status_code == 204
 
 
+async def test_redeem_concurrent_insert_race_is_idempotent(
+    client, make_user, db_session, monkeypatch
+):
+    """Regression test: same race as join_league's, reached via redeem_invite instead --
+    two concurrent redemptions for the same user could both miss the existing-membership
+    check before either committed, so the second's INSERT would hit the real partial unique
+    index as an unhandled IntegrityError/500. Simulated deterministically by forcing the
+    membership lookup to report "not found" even though an active row already exists."""
+    from app.leagues import router as invites_module
+
+    owner_token, _owner_id = await make_user(
+        "user_redeem_race_owner", "redeemraceowner@example.com", "Owner"
+    )
+    league_id = await _create_league(client, owner_token, "Redeem Race League")
+    await _make_league_public(client, owner_token, league_id)
+
+    create_response = await client.post(
+        f"/leagues/{league_id}/invites",
+        json={},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    code = create_response.json()["code"]
+
+    joiner_token, joiner_id = await make_user(
+        "user_redeem_race_joiner", "redeemracejoiner@example.com", "Joiner"
+    )
+    first_redeem = await client.post(
+        f"/invites/{code}/redeem", headers={"Authorization": f"Bearer {joiner_token}"}
+    )
+    assert first_redeem.status_code == 204
+
+    async def _always_report_no_membership(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        invites_module, "get_membership_including_deleted", _always_report_no_membership
+    )
+
+    second_redeem = await client.post(
+        f"/invites/{code}/redeem", headers={"Authorization": f"Bearer {joiner_token}"}
+    )
+
+    assert second_redeem.status_code == 204
+    membership_rows = (
+        (
+            await db_session.execute(
+                select(LeagueUser).where(
+                    LeagueUser.league_id == league_id, LeagueUser.user_id == joiner_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(membership_rows) == 1
+
+
 async def test_redeem_targeted_invite_already_active_member_still_sets_redeemed_at(
     client, make_user, db_session
 ):
@@ -703,6 +790,53 @@ async def test_redeem_targeted_invite_resurrects_soft_deleted_membership(
     ).scalar_one()
     assert membership_after.id == original_membership_id
     assert membership_after.deleted_at is None
+
+
+async def test_redeem_targeted_invite_after_kick_does_not_restore_admin_role(
+    client, make_user, db_session
+):
+    """Regression test: same role-reset gap as join_league, but reached via redeem_invite --
+    an admin kicked from the league and later re-invited must come back as a plain member."""
+    owner_token, _owner_id = await make_user(
+        "user_redeem_role_owner", "redeemroleowner@example.com", "Owner"
+    )
+    league_id = await _create_league(client, owner_token, "Redeem Role League")
+
+    admin_token, admin_id = await make_user(
+        "user_redeem_role_admin", "redeemroleadmin@example.com", "Admin"
+    )
+    await _add_member(client, owner_token, league_id, admin_token)
+    await client.post(
+        f"/leagues/{league_id}/admins/{admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    kick_response = await client.delete(
+        f"/leagues/{league_id}/members/{admin_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert kick_response.status_code == 204
+
+    create_response = await client.post(
+        f"/leagues/{league_id}/invites",
+        json={"target_username": f"user{admin_id}"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    code = create_response.json()["code"]
+
+    redeem_response = await client.post(
+        f"/invites/{code}/redeem", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+    assert redeem_response.status_code == 204
+
+    membership = (
+        await db_session.execute(
+            select(LeagueUser).where(
+                LeagueUser.league_id == league_id, LeagueUser.user_id == admin_id
+            )
+        )
+    ).scalar_one()
+    assert membership.role == "member"
 
 
 async def test_revoke_invite_without_token_returns_401(client):

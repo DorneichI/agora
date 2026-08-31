@@ -136,6 +136,34 @@ async def test_me_email_already_used_by_different_clerk_id_returns_409(client, m
     assert second_response.status_code == 409
 
 
+async def test_me_resync_email_collision_with_different_user_returns_409(client, make_clerk_token):
+    """Regression test: unlike the create-path collision above, a RETURNING user's email
+    changing at the IdP to something another account already owns had no IntegrityError
+    handling at all -- it would surface as a bare 500 on this request, and then brick every
+    subsequent request from this identity too, since the same unhandled resync runs inside
+    get_current_user on every call."""
+    first_token = make_clerk_token(
+        clerk_id="user_resync_conflict_a", email="resyncconflicta@example.com", name="A"
+    )
+    first_response = await client.get("/me", headers={"Authorization": f"Bearer {first_token}"})
+    assert first_response.status_code == 200
+
+    second_initial_token = make_clerk_token(
+        clerk_id="user_resync_conflict_b", email="resyncconflictb@example.com", name="B"
+    )
+    second_initial_response = await client.get(
+        "/me", headers={"Authorization": f"Bearer {second_initial_token}"}
+    )
+    assert second_initial_response.status_code == 200
+
+    second_updated_token = make_clerk_token(
+        clerk_id="user_resync_conflict_b", email="resyncconflicta@example.com", name="B"
+    )
+    response = await client.get("/me", headers={"Authorization": f"Bearer {second_updated_token}"})
+
+    assert response.status_code == 409
+
+
 async def test_set_username_succeeds(client, make_clerk_token):
     token = make_clerk_token(
         clerk_id="user_set_username", email="setusername@example.com", name="Set Username"
@@ -230,6 +258,25 @@ async def test_set_username_invalid_format_returns_422(client, make_clerk_token)
     response = await client.post(
         "/me/username",
         json={"username": "no spaces allowed"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422
+
+
+async def test_set_username_with_trailing_newline_returns_422(client, make_clerk_token):
+    """Regression test: `^...$` (unlike `\\A...\\Z`) matches immediately before a trailing
+    newline, so "alice\\n" used to pass validation as a distinct username from "alice"."""
+    token = make_clerk_token(
+        clerk_id="user_set_username_trailing_newline",
+        email="setusernametrailingnewline@example.com",
+        name="Trailing Newline",
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    response = await client.post(
+        "/me/username",
+        json={"username": "alice\n"},
         headers={"Authorization": f"Bearer {token}"},
     )
 
