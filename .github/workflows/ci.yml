@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, edited, reopened, synchronize]
   push:
     branches: [main]
 
@@ -201,8 +202,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # Unscoped (no `needs: changes` gate) -- enforces .github/PULL_REQUEST_TEMPLATE.md's minimum
+  # structure regardless of which package(s) the PR touches. See root CLAUDE.md's "PR template
+  # check" subsection (under "## CI") for what this checks and why.
+  pr-template:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Save PR body to a file
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s' "$PR_BODY" > pr_body.txt
+      - run: bash scripts/check-pr-template.sh pr_body.txt
+
   ci-status:
-    needs: [changes, backend, web, scripts, secrets]
+    needs: [changes, backend, web, scripts, secrets, pr-template]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -212,7 +227,7 @@ jobs:
         # or cancelled `changes` job left backend/web/scripts all skipped and still reported
         # green) and treated "cancelled" the same as a pass.
         run: |
-          for result in "${{ needs.changes.result }}" "${{ needs.backend.result }}" "${{ needs.web.result }}" "${{ needs.scripts.result }}" "${{ needs.secrets.result }}"; do
+          for result in "${{ needs.changes.result }}" "${{ needs.backend.result }}" "${{ needs.web.result }}" "${{ needs.scripts.result }}" "${{ needs.secrets.result }}" "${{ needs.pr-template.result }}"; do
             case "$result" in
               success|skipped) ;;
               *)
