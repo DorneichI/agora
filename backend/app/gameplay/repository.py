@@ -16,8 +16,11 @@ async def list_events(session: AsyncSession) -> list[Event]:
     return list((await session.execute(select(Event))).scalars().all())
 
 
-async def list_races(session: AsyncSession) -> list[Race]:
-    return list((await session.execute(select(Race))).scalars().all())
+async def list_races(session: AsyncSession, event_id: int | None = None) -> list[Race]:
+    statement = select(Race)
+    if event_id is not None:
+        statement = statement.where(Race.event_id == event_id)
+    return list((await session.execute(statement)).scalars().all())
 
 
 async def list_race_entries(session: AsyncSession) -> list[RaceEntry]:

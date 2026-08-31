@@ -56,10 +56,11 @@ async def get_race(
 
 @router.get("/races", response_model=list[RaceRead])
 async def list_races(
+    event_id: int | None = None,
     user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> list[Race]:
-    return await repository.list_races(session)
+    return await repository.list_races(session, event_id=event_id)
 
 
 class RaceUpdate(SQLModel):
