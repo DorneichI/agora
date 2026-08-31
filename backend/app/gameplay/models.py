@@ -1,6 +1,7 @@
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import Index, text
+from sqlalchemy import Column, DateTime, Index, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 from app.soft_delete import SoftDeleteMixin
@@ -143,5 +144,40 @@ class RaceEntryRead(SQLModel):
     level: str
     time: float | None
     status: str
+    created_by: int
+    updated_by: int | None
+
+
+class PredictionMarket(SoftDeleteMixin, table=True):
+    race_id: int = Field(foreign_key="race.id")
+    # JSONB rather than SQLModel's default generic JSON mapping for a `dict` annotation, for
+    # binary storage and indexability. Contents are deliberately unvalidated here -- the
+    # scoring-framework issue owns the shape of this config.
+    scoring_config: dict = Field(sa_column=Column(JSONB, nullable=False))
+    settled_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
+    created_by: int = Field(foreign_key="user.id")
+    updated_by: int | None = Field(default=None, foreign_key="user.id")
+
+    __table_args__ = (
+        Index(
+            "ix_predictionmarket_race_id_active",
+            "race_id",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+
+class PredictionMarketRead(SQLModel):
+    """Public shape of a PredictionMarket, used as API response models instead of the table model
+    itself -- keeps internal/bookkeeping columns (e.g. any added to SoftDeleteMixin or
+    PredictionMarket later) from being auto-exposed (and auto-codegen'd into the web/mobile
+    clients, see docs/architecture.md#api-contract) just by existing on the table. See
+    backend/CLAUDE.md's "Response schemas" convention."""
+
+    id: int
+    race_id: int
+    scoring_config: dict
+    settled_at: datetime | None
     created_by: int
     updated_by: int | None
