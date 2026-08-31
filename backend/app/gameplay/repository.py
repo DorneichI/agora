@@ -1,7 +1,15 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from app.gameplay.models import Event, Race, RaceEntry, Team, Venue
+from app.gameplay.models import (
+    Event,
+    Prediction,
+    PredictionMarket,
+    Race,
+    RaceEntry,
+    Team,
+    Venue,
+)
 
 
 async def list_teams(session: AsyncSession) -> list[Team]:
@@ -27,4 +35,15 @@ async def list_race_entries(session: AsyncSession, race_id: int | None = None) -
     statement = select(RaceEntry)
     if race_id is not None:
         statement = statement.where(RaceEntry.race_id == race_id)
+    return list((await session.execute(statement)).scalars().all())
+
+
+async def list_prediction_markets(session: AsyncSession) -> list[PredictionMarket]:
+    return list((await session.execute(select(PredictionMarket))).scalars().all())
+
+
+async def list_predictions(session: AsyncSession, market_id: int | None = None) -> list[Prediction]:
+    statement = select(Prediction)
+    if market_id is not None:
+        statement = statement.where(Prediction.market_id == market_id)
     return list((await session.execute(statement)).scalars().all())
