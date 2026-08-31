@@ -15,6 +15,7 @@ once) -- this never creates a new User.
 import asyncio
 import sys
 
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -27,7 +28,12 @@ class UserNotFoundError(Exception):
 
 
 async def promote_to_admin(session: AsyncSession, email: str) -> User:
-    user = (await session.execute(select(User).where(User.email == email))).scalar_one_or_none()
+    # Emails are stored verbatim from the Clerk token (unlike username, they're never
+    # lowercased on write -- see app/auth/deps.py), so match case-insensitively rather than
+    # assume the operator types the exact casing Clerk happened to issue.
+    user = (
+        await session.execute(select(User).where(func.lower(User.email) == email.lower()))
+    ).scalar_one_or_none()
     if user is None:
         raise UserNotFoundError(
             f"No user with email {email!r} found. This script only promotes an "
