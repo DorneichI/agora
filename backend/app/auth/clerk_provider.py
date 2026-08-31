@@ -29,6 +29,15 @@ class ClerkIdentityProvider:
                 # config error.
                 options={"require": ["exp", "iss", "sub"], "verify_aud": False},
             )
+        except jwt.PyJWKClientConnectionError as exc:
+            # Distinct from an invalid/malformed token: the JWKS endpoint itself is
+            # unreachable (PyJWKClientConnectionError is a PyJWTError subclass, so this
+            # must be caught before the blanket except below). Surfacing this as 401 would
+            # make a transient Clerk/network outage look like every session is invalid.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication provider is temporarily unavailable",
+            ) from exc
         except (jwt.PyJWTError, json.JSONDecodeError) as exc:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

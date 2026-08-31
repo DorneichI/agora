@@ -55,6 +55,23 @@ def test_garbage_token_rejected():
     assert exc_info.value.status_code == 401
 
 
+def test_jwks_connection_error_returns_503_not_401(monkeypatch):
+    """Regression test: a JWKS-endpoint outage (PyJWKClientConnectionError, a PyJWTError
+    subclass) used to be caught by the blanket `except (jwt.PyJWTError, ...)` below and
+    surfaced as 401 "Invalid authentication token" -- indistinguishable from every user's
+    session actually being invalid, instead of a transient dependency failure."""
+    from app.auth.clerk_provider import _jwk_client
+
+    def _raise_connection_error(token):
+        raise jwt.PyJWKClientConnectionError("could not fetch JWKS")
+
+    monkeypatch.setattr(_jwk_client, "get_signing_key_from_jwt", _raise_connection_error)
+
+    with pytest.raises(HTTPException) as exc_info:
+        ClerkIdentityProvider().verify("irrelevant-token")
+    assert exc_info.value.status_code == 503
+
+
 def test_jwks_fetch_returning_non_json_rejected(monkeypatch):
     from app.auth.clerk_provider import _jwk_client
 

@@ -42,7 +42,17 @@ async def _resync_profile_from_claims(
 
     user.email = identity.email
     session.add(user)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        # A different Clerk identity already owns this email -- same collision
+        # get_current_user's create path guards against, just reached via a returning
+        # user's email changing at the IdP instead of a first login.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email is already associated with a different account",
+        ) from None
     await session.refresh(user)
     return user
 
