@@ -100,6 +100,17 @@ by `alembic upgrade head` (re-runs every migration from scratch).
   response.
 - **Route naming for multi-word resources**: kebab-case, e.g. `RaceEntry` -> `/race-entries`
   (established by issue #44's `race_entries.py` router, the first two-word resource in the API).
+- **List filters**: an optional filter on a list endpoint is a plain query param declared
+  with a `None` default (`event_id: int | None = None`, placed before the route's
+  `Depends(...)` params) — not `Annotated[..., Query(...)]`, which is only worth reaching
+  for once a filter needs a description, alias, or bounds in the OpenAPI output. The router
+  passes it through to the domain's `repository.py`, which conditionally appends the `WHERE`
+  — routers never build queries themselves (see "Domain modules" below). A filter value
+  matching nothing yields `200 []`, never a 404: these are filter semantics, not a lookup,
+  and "no rows match" is indistinguishable from a parent that legitimately has no children
+  yet. Non-integer input yields `422` automatically from the type annotation, so no
+  hand-written validation is needed. (First case: issue #92's `/races?event_id=` and
+  `/race-entries?race_id=`.)
 
 ## Domain modules
 
