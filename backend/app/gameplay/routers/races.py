@@ -19,6 +19,7 @@ async def _validate_event_id(event_id: int, session: AsyncSession) -> None:
 
 
 class RaceCreate(SQLModel):
+    name: str
     event_id: int
     boat_class: str
     level: str
@@ -34,6 +35,7 @@ async def create_race(
     await _validate_event_id(body.event_id, session)
 
     race = Race(
+        name=body.name,
         event_id=body.event_id,
         boat_class=body.boat_class,
         level=body.level,
@@ -64,6 +66,7 @@ async def list_races(
 
 
 class RaceUpdate(SQLModel):
+    name: str | None = None
     boat_class: str | None = None
     level: str | None = None
     round: str | None = None
@@ -79,7 +82,7 @@ async def update_race(
     race = await get_or_404(session, Race, race_id)
 
     updates = body.model_dump(exclude_unset=True)
-    _reject_null_updates(updates, {"boat_class", "level"})
+    _reject_null_updates(updates, {"name", "boat_class", "level"})
     if updates:
         for field, value in updates.items():
             setattr(race, field, value)

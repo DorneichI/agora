@@ -18,7 +18,8 @@ async def _create_event(client, token):
 
 async def test_create_race_without_token_returns_401(client):
     response = await client.post(
-        "/races", json={"event_id": 1, "boat_class": "8+", "level": "varsity"}
+        "/races",
+        json={"name": "Varsity 8+ Heat 1", "event_id": 1, "boat_class": "8+", "level": "varsity"},
     )
 
     assert response.status_code == 401
@@ -35,7 +36,12 @@ async def test_create_race_as_non_admin_returns_403(client, make_clerk_token, ma
 
     response = await client.post(
         "/races",
-        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        json={
+            "name": "Varsity 8+ Heat 1",
+            "event_id": event_id,
+            "boat_class": "8+",
+            "level": "varsity",
+        },
         headers={"Authorization": f"Bearer {nonadmin_token}"},
     )
 
@@ -48,13 +54,19 @@ async def test_create_race_as_admin_sets_created_by(client, make_admin, db_sessi
 
     response = await client.post(
         "/races",
-        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        json={
+            "name": "Varsity 8+ Heat 1",
+            "event_id": event_id,
+            "boat_class": "8+",
+            "level": "varsity",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
 
     assert response.status_code == 200
     body = response.json()
     assert body["event_id"] == event_id
+    assert body["name"] == "Varsity 8+ Heat 1"
     assert body["boat_class"] == "8+"
     assert body["level"] == "varsity"
     assert body["round"] is None
@@ -62,6 +74,7 @@ async def test_create_race_as_admin_sets_created_by(client, make_admin, db_sessi
     assert body["updated_by"] is None
     assert set(body.keys()) == {
         "id",
+        "name",
         "event_id",
         "boat_class",
         "level",
@@ -79,7 +92,12 @@ async def test_create_race_with_nonexistent_event_id_returns_422(client, make_ad
 
     response = await client.post(
         "/races",
-        json={"event_id": 999999, "boat_class": "8+", "level": "varsity"},
+        json={
+            "name": "Varsity 8+ Heat 1",
+            "event_id": 999999,
+            "boat_class": "8+",
+            "level": "varsity",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -108,7 +126,12 @@ async def test_get_race_as_non_admin_succeeds(client, make_user, make_admin):
     event_id = await _create_event(client, token)
     create_response = await client.post(
         "/races",
-        json={"event_id": event_id, "boat_class": "4+", "level": "3v"},
+        json={
+            "name": "Mens 3V 4+ Final",
+            "event_id": event_id,
+            "boat_class": "4+",
+            "level": "3v",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     race_id = create_response.json()["id"]
@@ -137,7 +160,12 @@ async def test_get_soft_deleted_race_returns_404(client, db_session, make_admin)
     event_id = await _create_event(client, token)
     create_response = await client.post(
         "/races",
-        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        json={
+            "name": "Varsity 8+ Heat 1",
+            "event_id": event_id,
+            "boat_class": "8+",
+            "level": "varsity",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     race_id = create_response.json()["id"]
@@ -162,12 +190,22 @@ async def test_list_races_returns_all_active_races(client, make_admin):
     event_id = await _create_event(client, token)
     await client.post(
         "/races",
-        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        json={
+            "name": "Varsity 8+ Heat 1",
+            "event_id": event_id,
+            "boat_class": "8+",
+            "level": "varsity",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     await client.post(
         "/races",
-        json={"event_id": event_id, "boat_class": "4+", "level": "3v"},
+        json={
+            "name": "Mens 3V 4+ Final",
+            "event_id": event_id,
+            "boat_class": "4+",
+            "level": "3v",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -185,7 +223,12 @@ async def test_list_races_excludes_soft_deleted_races(client, db_session, make_a
     event_id = await _create_event(client, token)
     create_response = await client.post(
         "/races",
-        json={"event_id": event_id, "boat_class": "2x", "level": "novice"},
+        json={
+            "name": "Novice 2x Time Trial",
+            "event_id": event_id,
+            "boat_class": "2x",
+            "level": "novice",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     race_id = create_response.json()["id"]
@@ -207,17 +250,32 @@ async def test_list_races_filters_by_event_id(client, make_admin):
     event_two = await _create_event(client, token)
     await client.post(
         "/races",
-        json={"event_id": event_one, "boat_class": "8+", "level": "varsity"},
+        json={
+            "name": "Varsity 8+ Heat 1",
+            "event_id": event_one,
+            "boat_class": "8+",
+            "level": "varsity",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     await client.post(
         "/races",
-        json={"event_id": event_one, "boat_class": "4+", "level": "3v"},
+        json={
+            "name": "Mens 3V 4+ Final",
+            "event_id": event_one,
+            "boat_class": "4+",
+            "level": "3v",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     await client.post(
         "/races",
-        json={"event_id": event_two, "boat_class": "2x", "level": "novice"},
+        json={
+            "name": "Novice 2x Time Trial",
+            "event_id": event_two,
+            "boat_class": "2x",
+            "level": "novice",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -238,7 +296,12 @@ async def test_list_races_with_unknown_event_id_returns_empty(client, make_admin
     event_id = await _create_event(client, token)
     await client.post(
         "/races",
-        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        json={
+            "name": "Varsity 8+ Heat 1",
+            "event_id": event_id,
+            "boat_class": "8+",
+            "level": "varsity",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -257,12 +320,22 @@ async def test_list_races_filter_excludes_soft_deleted_races(client, db_session,
     event_id = await _create_event(client, token)
     kept_response = await client.post(
         "/races",
-        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        json={
+            "name": "Varsity 8+ Heat 1",
+            "event_id": event_id,
+            "boat_class": "8+",
+            "level": "varsity",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     deleted_response = await client.post(
         "/races",
-        json={"event_id": event_id, "boat_class": "2x", "level": "novice"},
+        json={
+            "name": "Novice 2x Time Trial",
+            "event_id": event_id,
+            "boat_class": "2x",
+            "level": "novice",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -291,7 +364,12 @@ async def test_patch_race_as_non_admin_returns_403(client, make_clerk_token, mak
     event_id = await _create_event(client, token)
     create_response = await client.post(
         "/races",
-        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        json={
+            "name": "Varsity 8+ Heat 1",
+            "event_id": event_id,
+            "boat_class": "8+",
+            "level": "varsity",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     race_id = create_response.json()["id"]
@@ -333,7 +411,12 @@ async def test_patch_race_updates_fields_and_sets_updated_by(client, make_admin)
     event_id = await _create_event(client, token)
     create_response = await client.post(
         "/races",
-        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        json={
+            "name": "Varsity 8+ Heat 1",
+            "event_id": event_id,
+            "boat_class": "8+",
+            "level": "varsity",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     race_id = create_response.json()["id"]
@@ -363,7 +446,12 @@ async def test_delete_race_as_non_admin_returns_403(client, make_clerk_token, ma
     event_id = await _create_event(client, token)
     create_response = await client.post(
         "/races",
-        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        json={
+            "name": "Varsity 8+ Heat 1",
+            "event_id": event_id,
+            "boat_class": "8+",
+            "level": "varsity",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     race_id = create_response.json()["id"]
@@ -399,7 +487,12 @@ async def test_delete_race_soft_deletes(client, db_session, make_admin):
     event_id = await _create_event(client, token)
     create_response = await client.post(
         "/races",
-        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        json={
+            "name": "Varsity 8+ Heat 1",
+            "event_id": event_id,
+            "boat_class": "8+",
+            "level": "varsity",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     race_id = create_response.json()["id"]
@@ -432,7 +525,12 @@ async def test_patch_race_with_empty_body_does_not_set_updated_by(client, make_a
     event_id = await _create_event(client, token)
     create_response = await client.post(
         "/races",
-        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        json={
+            "name": "Varsity 8+ Heat 1",
+            "event_id": event_id,
+            "boat_class": "8+",
+            "level": "varsity",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     race_id = create_response.json()["id"]
@@ -452,7 +550,12 @@ async def test_delete_race_with_active_race_entry_returns_409(client, make_admin
     event_id = await _create_event(client, token)
     create_response = await client.post(
         "/races",
-        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        json={
+            "name": "Varsity 8+ Heat 1",
+            "event_id": event_id,
+            "boat_class": "8+",
+            "level": "varsity",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     race_id = create_response.json()["id"]

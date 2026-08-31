@@ -19,7 +19,12 @@ async def _create_event(client, token):
 async def _create_race(client, token, event_id):
     response = await client.post(
         "/races",
-        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        json={
+            "name": "Varsity 8+ Heat 1",
+            "event_id": event_id,
+            "boat_class": "8+",
+            "level": "varsity",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     return response.json()["id"]

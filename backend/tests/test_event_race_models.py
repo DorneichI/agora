@@ -71,13 +71,20 @@ async def test_race_has_soft_delete_fields_and_created_by(db_session):
     db_session.add(event)
     await db_session.commit()
 
-    race = Race(event_id=event.id, boat_class="8+", level="varsity", created_by=creator.id)
+    race = Race(
+        name="Varsity 8+ Heat 1",
+        event_id=event.id,
+        boat_class="8+",
+        level="varsity",
+        created_by=creator.id,
+    )
     db_session.add(race)
     await db_session.commit()
 
     assert race.id is not None
     assert race.created_at is not None
     assert race.deleted_at is None
+    assert race.name == "Varsity 8+ Heat 1"
     assert race.created_by == creator.id
     assert race.updated_by is None
     assert race.round is None
@@ -100,7 +107,12 @@ async def test_race_accepts_optional_round(db_session):
     await db_session.commit()
 
     race = Race(
-        event_id=event.id, boat_class="4+", level="3v", round="final", created_by=creator.id
+        name="Mens 3V 4+ Final",
+        event_id=event.id,
+        boat_class="4+",
+        level="3v",
+        round="final",
+        created_by=creator.id,
     )
     db_session.add(race)
     await db_session.commit()
