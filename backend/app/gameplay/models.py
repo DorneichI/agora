@@ -181,3 +181,40 @@ class PredictionMarketRead(SQLModel):
     settled_at: datetime | None
     created_by: int
     updated_by: int | None
+
+
+class Prediction(SoftDeleteMixin, table=True):
+    market_id: int = Field(foreign_key="predictionmarket.id")
+    # No created_by/updated_by: unlike every other gameplay table, this one already has an
+    # owning user in user_id, so audit columns would duplicate it on every row.
+    user_id: int = Field(foreign_key="user.id")
+    # Required regardless of scoring config -- the margin component is expressed relative to a
+    # picked team, so there is no valid prediction without one.
+    picked_team_id: int = Field(foreign_key="team.id")
+    margin_threshold_seconds: float | None = Field(default=None)
+    points_awarded: float | None = Field(default=None)
+
+    __table_args__ = (
+        Index(
+            "ix_prediction_market_id_user_id_active",
+            "market_id",
+            "user_id",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
+
+
+class PredictionRead(SQLModel):
+    """Public shape of a Prediction, used as API response models instead of the table model
+    itself -- keeps internal/bookkeeping columns (e.g. any added to SoftDeleteMixin or
+    Prediction later) from being auto-exposed (and auto-codegen'd into the web/mobile clients,
+    see docs/architecture.md#api-contract) just by existing on the table. See
+    backend/CLAUDE.md's "Response schemas" convention."""
+
+    id: int
+    market_id: int
+    user_id: int
+    picked_team_id: int
+    margin_threshold_seconds: float | None
+    points_awarded: float | None

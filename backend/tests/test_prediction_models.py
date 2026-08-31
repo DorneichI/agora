@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.gameplay.models import Event, PredictionMarket, Race, Team
+from app.gameplay.models import Event, Prediction, PredictionMarket, Race, Team
 from app.models import User
 
 
@@ -108,6 +108,78 @@ async def test_market_recreate_after_soft_delete_allowed_by_partial_index(db_ses
     second = await _make_market(
         db_session, creator, race
     )  # IntegrityError if index weren't partial
+
+    assert second.id is not None
+    assert second.id != first.id
+
+
+async def test_prediction_has_soft_delete_fields_and_defaults(db_session):
+    creator = await _make_creator(db_session, "user_p_owner", "powner@example.com")
+    race = await _make_race(db_session, creator)
+    market = await _make_market(db_session, creator, race)
+    team = await _make_team(db_session, creator)
+
+    prediction = Prediction(market_id=market.id, user_id=creator.id, picked_team_id=team.id)
+    db_session.add(prediction)
+    await db_session.commit()
+
+    assert prediction.id is not None
+    assert prediction.created_at is not None
+    assert prediction.deleted_at is None
+    assert prediction.user_id == creator.id
+    assert prediction.picked_team_id == team.id
+    assert prediction.margin_threshold_seconds is None
+    assert prediction.points_awarded is None
+
+
+async def test_prediction_margin_threshold_persists_when_supplied(db_session):
+    creator = await _make_creator(db_session, "user_p_margin", "pmargin@example.com")
+    race = await _make_race(db_session, creator)
+    market = await _make_market(db_session, creator, race)
+    team = await _make_team(db_session, creator)
+
+    prediction = Prediction(
+        market_id=market.id,
+        user_id=creator.id,
+        picked_team_id=team.id,
+        margin_threshold_seconds=2.5,
+    )
+    db_session.add(prediction)
+    await db_session.commit()
+
+    assert prediction.margin_threshold_seconds == 2.5
+
+
+async def test_duplicate_active_prediction_for_same_market_and_user_rejected(db_session):
+    creator = await _make_creator(db_session, "user_p_dup", "pdup@example.com")
+    race = await _make_race(db_session, creator)
+    market = await _make_market(db_session, creator, race)
+    team = await _make_team(db_session, creator)
+
+    db_session.add(Prediction(market_id=market.id, user_id=creator.id, picked_team_id=team.id))
+    await db_session.commit()
+
+    db_session.add(Prediction(market_id=market.id, user_id=creator.id, picked_team_id=team.id))
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+
+
+async def test_prediction_recreate_after_soft_delete_allowed_by_partial_index(db_session):
+    creator = await _make_creator(db_session, "user_p_readd", "preadd@example.com")
+    race = await _make_race(db_session, creator)
+    market = await _make_market(db_session, creator, race)
+    team = await _make_team(db_session, creator)
+
+    first = Prediction(market_id=market.id, user_id=creator.id, picked_team_id=team.id)
+    db_session.add(first)
+    await db_session.commit()
+
+    await db_session.delete(first)
+    await db_session.commit()
+
+    second = Prediction(market_id=market.id, user_id=creator.id, picked_team_id=team.id)
+    db_session.add(second)
+    await db_session.commit()  # would raise IntegrityError if the index weren't partial
 
     assert second.id is not None
     assert second.id != first.id
