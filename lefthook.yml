@@ -17,6 +17,24 @@ pre-commit:
       glob: "web/**/*.{js,jsx,ts,tsx}"
       run: npx eslint --fix {staged_files} && env -u GIT_PREFIX -u GIT_DIR git add {staged_files} && npx prettier --write {staged_files}
       stage_fixed: true
+    # File-length enforcement for backend (see root CLAUDE.md's file-length enforcement
+    # section). Web needs no equivalent command here -- ESLint's `max-lines` rule already
+    # runs as part of web-lint above, since ruff (unlike ESLint) has no built-in line-count
+    # rule. Only checks staged files (same scope as backend-format above), so it only ever
+    # flags the file you're actively touching -- a file that crossed the limit via someone
+    # else's earlier, unrelated commit won't surface here until it's next staged.
+    backend-file-length:
+      root: "backend/"
+      glob: "backend/**/*.py"
+      run: |
+        files=""
+        for f in {staged_files}; do
+          case "$f" in
+            tests/*|./tests/*) ;;
+            *) files="$files $f" ;;
+          esac
+        done
+        if [ -n "$files" ]; then bash ../scripts/check-file-length.sh 400 $files; fi
     # Repo-wide (no `root:`/`glob:` scoping — a secret can land in any file, not just
     # backend/web source). Fails loudly, blocking the commit, if the `gitleaks` binary isn't
     # on PATH — it's a standalone binary `npm install` can't provision, so missing it must be
@@ -39,6 +57,18 @@ pre-push:
         DATABASE_URL: "postgresql+asyncpg://agora:agora@localhost:5432/agora"
         CLERK_ISSUER: "https://test.clerk.accounts.dev"
       run: uv run ruff check . && uv run pytest
+    # Full-tree scan (unlike the pre-commit staged-files version above), since pre-push is
+    # the right point to catch a file that crossed the limit without ever being staged in a
+    # commit that touched this hook (e.g. a merge). `git ls-files` needs GIT_PREFIX/GIT_DIR
+    # unset for the same reason as `git add` above -- see this file's top comment. Web needs
+    # no equivalent command here -- ESLint's `max-lines` rule already runs as part of the
+    # `npm run lint` inside web-check below.
+    backend-file-length:
+      root: "backend/"
+      glob: "backend/**/*"
+      run: |
+        files=$(env -u GIT_PREFIX -u GIT_DIR git ls-files -- '*.py' | grep -v '^tests/')
+        bash ../scripts/check-file-length.sh 400 $files
     web-check:
       root: "web/"
       glob: "web/**/*"

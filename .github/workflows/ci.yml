@@ -70,6 +70,10 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run lint-imports
+      - name: Check file length
+        run: |
+          files=$(git ls-files -- '*.py' | grep -v '^tests/')
+          bash ../scripts/check-file-length.sh 400 $files
       # `key` only ever matches on a re-run of the exact same commit; on a normal PR run it's a
       # no-op and `restore-keys`' prefix match (picking the most recently saved entry from main)
       # is what actually restores the baseline.
@@ -188,6 +192,7 @@ jobs:
       - run: npm run test:coverage-ratchet
       - run: npm run test:sync-env
       - run: npm run test:pr-template
+      - run: npm run test:file-length
 
   # Unscoped (no `needs: changes` gate) -- a secret can land in any file, not just backend/web
   # source, so this always runs. Authoritative backstop for lefthook's local pre-commit scan

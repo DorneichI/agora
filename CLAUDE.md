@@ -77,14 +77,17 @@ loss of "tribal knowledge."
 
 - **`pre-commit`**: fast, staged-files-only formatting/lint, scoped to whichever of
   `backend/`/`web/` actually changed (`ruff format` + `ruff check --fix` for `backend/`,
-  `eslint --fix` + `prettier --write` for `web/`) — plus a repo-wide secret scan
+  `eslint --fix` + `prettier --write` for `web/`, the latter already covering web's file-length
+  check — see below) — plus a repo-wide secret scan
   ([gitleaks](https://github.com/gitleaks/gitleaks) `protect --staged`, unscoped since a secret
-  can land in any file, not just backend/web source).
+  can land in any file, not just backend/web source) and a dedicated staged-files file-length
+  check for backend.
 - **`pre-push`**: lint/typecheck + tests for the changed package(s), per each package's own tools
   (`ruff check` + `pytest` for `backend/`; `eslint` + `tsc --noEmit` + tests for `web/` — `backend/`
-  has no separate typechecker, `ruff` is lint+format only). The backend check runs `pytest` against
-  a real Postgres reachable at `localhost:5432`, so `docker compose up -d postgres` (or
-  `docker compose up -d backend`) must be running locally for it to pass.
+  has no separate typechecker, `ruff` is lint+format only), plus a full-tree (not staged-files-only)
+  file-length check for backend. The backend check runs `pytest` against a real Postgres reachable
+  at `localhost:5432`, so `docker compose up -d postgres` (or `docker compose up -d backend`) must
+  be running locally for it to pass.
 
 `npm install` at the repo root (once, after cloning) installs the `lefthook` binary and wires it
 into `.git/hooks` automatically via the `prepare` script — no separate `lefthook install` step.
@@ -129,6 +132,32 @@ pre-flight before that — don't skip them with `--no-verify`.
   must not import `app.gameplay` — see `backend/CLAUDE.md`'s "Domain modules" section).
 - Web: ESLint (`eslint-config-next`) + Prettier.
 - Mobile: `dart format` + `flutter analyze` (with `flutter_lints`) — Flutter's built-in tools.
+
+### File-length enforcement
+
+Both `backend/` and `web/` source files are capped at 400 lines, hard-enforced in `pre-commit`,
+`pre-push`, and CI (tracked in [issue #102](https://github.com/DorneichI/agora/issues/102), whose
+own PR split `app/leagues/router.py` — the file that motivated this check — once it hit 506
+lines).
+
+- **Web** uses ESLint's built-in `max-lines` rule (`web/eslint.config.mjs`) — enforced for free
+  everywhere ESLint already runs (`web-lint`/`web-check` in `lefthook.yml`, `npm run lint` in CI),
+  no separate command needed.
+- **Backend** has no equivalent in `ruff`, so `scripts/check-file-length.sh` (a small generic
+  `wc -l`-based checker, tested by `scripts/test-check-file-length.sh`) fills the gap as a
+  dedicated `backend-file-length` command/CI step. The script itself takes no opinion on which
+  files to check or exclude — the caller passes in an already-filtered file list — so it isn't
+  backend-specific in principle, but only backend currently needs it.
+- **Test files are exempt** (backend's `tests/`, web's `*.test.ts(x)` and `e2e/`): a long test
+  file is usually many independent cases, not the mixed-responsibilities problem this check
+  targets, and several existing test files (e.g. `tests/test_leagues.py`) are already far past any
+  reasonable single threshold — splitting them wouldn't add clarity the way it does for source
+  files. Revisit if test-file bloat becomes an actual problem later, the same "revisit if it comes
+  up" pattern used elsewhere in this file (e.g. the secrets-manager decision below).
+- `pre-commit`'s version only checks staged files (so it only ever flags the file you're actively
+  editing); `pre-push` and CI scan the full tracked tree via `git ls-files`, so a file that crossed
+  the limit without ever being staged under this check (e.g. a merge) still gets caught before
+  `main`.
 
 ## CI
 
