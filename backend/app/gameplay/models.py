@@ -87,6 +87,7 @@ class EventRead(SQLModel):
 
 
 class Race(SoftDeleteMixin, table=True):
+    name: str = Field()
     event_id: int = Field(foreign_key="event.id")
     boat_class: str = Field()
     level: str = Field()
@@ -103,6 +104,7 @@ class RaceRead(SQLModel):
     backend/CLAUDE.md's "Response schemas" convention."""
 
     id: int
+    name: str
     event_id: int
     boat_class: str
     level: str

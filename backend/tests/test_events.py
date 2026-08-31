@@ -492,7 +492,12 @@ async def test_delete_event_with_active_race_returns_409(client, make_admin):
     event_id = create_response.json()["id"]
     await client.post(
         "/races",
-        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        json={
+            "name": "Varsity 8+ Heat 1",
+            "event_id": event_id,
+            "boat_class": "8+",
+            "level": "varsity",
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
 
