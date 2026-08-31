@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, edited, reopened, synchronize]
   push:
     branches: [main]
 
@@ -38,7 +39,7 @@ jobs:
 
   backend:
     needs: changes
-    if: needs.changes.outputs.backend == 'true'
+    if: needs.changes.outputs.backend == 'true' && github.event.action != 'edited'
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgresql+asyncpg://agora:agora@localhost:5432/agora
@@ -117,7 +118,7 @@ jobs:
 
   web:
     needs: changes
-    if: needs.changes.outputs.web == 'true'
+    if: needs.changes.outputs.web == 'true' && github.event.action != 'edited'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -180,18 +181,22 @@ jobs:
 
   scripts:
     needs: changes
-    if: needs.changes.outputs.scripts == 'true'
+    if: needs.changes.outputs.scripts == 'true' && github.event.action != 'edited'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - run: npm run test:coverage-ratchet
       - run: npm run test:sync-env
+      - run: npm run test:pr-template
 
   # Unscoped (no `needs: changes` gate) -- a secret can land in any file, not just backend/web
   # source, so this always runs. Authoritative backstop for lefthook's local pre-commit scan
   # (which can be skipped with --no-verify, or simply not run yet if a contributor hasn't
-  # installed the gitleaks binary) -- see root CLAUDE.md's "Pre-push checks" section.
+  # installed the gitleaks binary) -- see root CLAUDE.md's "Pre-push checks" section. Still
+  # skipped on a PR-body-only `edited` event, though, since a full-history secret scan can't
+  # find anything new when no commit has landed.
   secrets:
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -201,8 +206,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # Unscoped (no `needs: changes` gate) -- enforces .github/PULL_REQUEST_TEMPLATE.md's minimum
+  # structure regardless of which package(s) the PR touches. See root CLAUDE.md's "PR template
+  # check" subsection (under "## CI") for what this checks and why.
+  pr-template:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Save PR body to a file
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: printf '%s' "$PR_BODY" > pr_body.txt
+      - run: bash scripts/check-pr-template.sh pr_body.txt
+
   ci-status:
-    needs: [changes, backend, web, scripts, secrets]
+    needs: [changes, backend, web, scripts, secrets, pr-template]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -212,7 +231,7 @@ jobs:
         # or cancelled `changes` job left backend/web/scripts all skipped and still reported
         # green) and treated "cancelled" the same as a pass.
         run: |
-          for result in "${{ needs.changes.result }}" "${{ needs.backend.result }}" "${{ needs.web.result }}" "${{ needs.scripts.result }}" "${{ needs.secrets.result }}"; do
+          for result in "${{ needs.changes.result }}" "${{ needs.backend.result }}" "${{ needs.web.result }}" "${{ needs.scripts.result }}" "${{ needs.secrets.result }}" "${{ needs.pr-template.result }}"; do
             case "$result" in
               success|skipped) ;;
               *)
