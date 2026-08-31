@@ -187,8 +187,22 @@ jobs:
       - run: npm run test:coverage-ratchet
       - run: npm run test:sync-env
 
+  # Unscoped (no `needs: changes` gate) -- a secret can land in any file, not just backend/web
+  # source, so this always runs. Authoritative backstop for lefthook's local pre-commit scan
+  # (which can be skipped with --no-verify, or simply not run yet if a contributor hasn't
+  # installed the gitleaks binary) -- see root CLAUDE.md's "Pre-push checks" section.
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   ci-status:
-    needs: [changes, backend, web, scripts]
+    needs: [changes, backend, web, scripts, secrets]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -198,7 +212,7 @@ jobs:
         # or cancelled `changes` job left backend/web/scripts all skipped and still reported
         # green) and treated "cancelled" the same as a pass.
         run: |
-          for result in "${{ needs.changes.result }}" "${{ needs.backend.result }}" "${{ needs.web.result }}" "${{ needs.scripts.result }}"; do
+          for result in "${{ needs.changes.result }}" "${{ needs.backend.result }}" "${{ needs.web.result }}" "${{ needs.scripts.result }}" "${{ needs.secrets.result }}"; do
             case "$result" in
               success|skipped) ;;
               *)

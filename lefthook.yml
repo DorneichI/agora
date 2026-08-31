@@ -17,6 +17,14 @@ pre-commit:
       glob: "web/**/*.{js,jsx,ts,tsx}"
       run: npx eslint --fix {staged_files} && env -u GIT_PREFIX -u GIT_DIR git add {staged_files} && npx prettier --write {staged_files}
       stage_fixed: true
+    # Repo-wide (no `root:`/`glob:` scoping — a secret can land in any file, not just
+    # backend/web source). Fails loudly, blocking the commit, if the `gitleaks` binary isn't
+    # on PATH — it's a standalone binary `npm install` can't provision, so missing it must be
+    # a hard stop rather than a silent skip. See root CLAUDE.md's "Pre-push checks" section.
+    secret-scan:
+      run: |
+        command -v gitleaks >/dev/null 2>&1 || { echo "gitleaks not found on PATH -- install it before committing (macOS: brew install gitleaks; other platforms: https://github.com/gitleaks/gitleaks#installing)." >&2; exit 1; }
+        gitleaks protect --staged --redact --no-banner
 
 pre-push:
   parallel: true
