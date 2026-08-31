@@ -72,12 +72,14 @@ loss of "tribal knowledge."
 
 ## Pre-push checks
 
-[lefthook](https://github.com/evilmartians/lefthook) runs two git hooks, scoped to whichever of
-`backend/`/`web/` actually changed (config lives in `lefthook.yml` at the repo root; mobile isn't
-covered yet — no `mobile/` directory exists):
+[lefthook](https://github.com/evilmartians/lefthook) runs git hooks (config lives in
+`lefthook.yml` at the repo root; mobile isn't covered yet — no `mobile/` directory exists):
 
-- **`pre-commit`**: fast, staged-files-only formatting/lint (`ruff format` + `ruff check --fix`
-  for `backend/`, `eslint --fix` + `prettier --write` for `web/`).
+- **`pre-commit`**: fast, staged-files-only formatting/lint, scoped to whichever of
+  `backend/`/`web/` actually changed (`ruff format` + `ruff check --fix` for `backend/`,
+  `eslint --fix` + `prettier --write` for `web/`) — plus a repo-wide secret scan
+  ([gitleaks](https://github.com/gitleaks/gitleaks) `protect --staged`, unscoped since a secret
+  can land in any file, not just backend/web source).
 - **`pre-push`**: lint/typecheck + tests for the changed package(s), per each package's own tools
   (`ruff check` + `pytest` for `backend/`; `eslint` + `tsc --noEmit` + tests for `web/` — `backend/`
   has no separate typechecker, `ruff` is lint+format only). The backend check runs `pytest` against
@@ -86,9 +88,18 @@ covered yet — no `mobile/` directory exists):
 
 `npm install` at the repo root (once, after cloning) installs the `lefthook` binary and wires it
 into `.git/hooks` automatically via the `prepare` script — no separate `lefthook install` step.
+`gitleaks` is the one exception: it's a standalone Go binary, not an npm/uv package, so it isn't
+provisioned by `npm install` — every contributor installs it once themselves (macOS:
+`brew install gitleaks`; other platforms: see
+[gitleaks' install docs](https://github.com/gitleaks/gitleaks#installing)). The pre-commit hook
+fails loudly (blocking the commit, with an install pointer in the error) if the binary isn't on
+`PATH`, rather than silently skipping the scan.
 
 CI (`.github/workflows/ci.yml`, added by [issue #3](https://github.com/DorneichI/agora/issues/3))
-is now in place and is the authoritative check regardless. These hooks remain a fast local
+is now in place and is the authoritative check regardless — this matters especially for secret
+scanning, since the local `pre-commit` hook can be bypassed (`--no-verify`) or simply not run yet
+for a contributor who hasn't installed `gitleaks`. CI's `secrets` job re-scans full git history on
+every PR/push, unscoped and ungated by which package changed. These hooks remain a fast local
 pre-flight before that — don't skip them with `--no-verify`.
 
 ## Local dev environment
