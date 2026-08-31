@@ -146,6 +146,8 @@ does not re-export a domain package's symbols -- import them from `app.<domain>.
 `app.leagues` -> `app.gameplay` import direction is forbidden by an `import-linter` contract
 (`[tool.importlinter]` in `pyproject.toml`, enforced in CI via `uv run lint-imports`) so the two
 stay independently removable; the reverse direction (gameplay depending on leagues) is allowed
-and unchecked. `app/leagues/router.py` is still a single file; `app/gameplay/` uses the
-`routers/` package split described above (issue #87) since its router file was the one that grew
-too large.
+and unchecked. Both `app/leagues/` and `app/gameplay/` use the `routers/` package split described
+above -- `app/gameplay/router.py` was the first to grow too large (issue #87, at 508 lines / 25
+endpoints across 5 resources), and `app/leagues/router.py` followed the same pattern once the
+automated file-length check (issue #102) flagged it at 506 lines (leagues + invites endpoints
+split into `app/leagues/routers/leagues.py` and `app/leagues/routers/invites.py`).

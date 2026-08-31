@@ -302,7 +302,7 @@ async def test_create_invite_retries_on_code_collision(client, make_user, db_ses
     to draw that same code first (colliding with the partial unique index) before a fresh
     one -- proving the retry loop's collision path is actually exercised, not just that the
     happy path works."""
-    from app.leagues import router as invites_module
+    from app.leagues.routers import invites as invites_module
 
     owner_token, owner_id = await make_user("user_inv_owner_11", "invowner11@example.com", "Owner")
     league_id = await _create_league(client, owner_token, "Invite League 11")
@@ -587,7 +587,7 @@ async def test_redeem_concurrent_insert_race_is_idempotent(
     check before either committed, so the second's INSERT would hit the real partial unique
     index as an unhandled IntegrityError/500. Simulated deterministically by forcing the
     membership lookup to report "not found" even though an active row already exists."""
-    from app.leagues import router as invites_module
+    from app.leagues.routers import invites as invites_module
 
     owner_token, _owner_id = await make_user(
         "user_redeem_race_owner", "redeemraceowner@example.com", "Owner"

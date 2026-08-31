@@ -9,6 +9,7 @@
     "sync-env": "bash scripts/sync-env.sh",
     "test:sync-env": "bash scripts/test-sync-env.sh",
     "test:coverage-ratchet": "bash scripts/test-check-coverage-ratchet.sh",
-    "test:pr-template": "bash scripts/test-check-pr-template.sh"
+    "test:pr-template": "bash scripts/test-check-pr-template.sh",
+    "test:file-length": "bash scripts/test-check-file-length.sh"
   }
 }
