@@ -579,6 +579,63 @@ async def test_redeem_already_active_member_is_idempotent(client, make_user):
     assert response.status_code == 204
 
 
+async def test_redeem_concurrent_insert_race_is_idempotent(
+    client, make_user, db_session, monkeypatch
+):
+    """Regression test: same race as join_league's, reached via redeem_invite instead --
+    two concurrent redemptions for the same user could both miss the existing-membership
+    check before either committed, so the second's INSERT would hit the real partial unique
+    index as an unhandled IntegrityError/500. Simulated deterministically by forcing the
+    membership lookup to report "not found" even though an active row already exists."""
+    from app.leagues import router as invites_module
+
+    owner_token, _owner_id = await make_user(
+        "user_redeem_race_owner", "redeemraceowner@example.com", "Owner"
+    )
+    league_id = await _create_league(client, owner_token, "Redeem Race League")
+    await _make_league_public(client, owner_token, league_id)
+
+    create_response = await client.post(
+        f"/leagues/{league_id}/invites",
+        json={},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    code = create_response.json()["code"]
+
+    joiner_token, joiner_id = await make_user(
+        "user_redeem_race_joiner", "redeemracejoiner@example.com", "Joiner"
+    )
+    first_redeem = await client.post(
+        f"/invites/{code}/redeem", headers={"Authorization": f"Bearer {joiner_token}"}
+    )
+    assert first_redeem.status_code == 204
+
+    async def _always_report_no_membership(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        invites_module, "get_membership_including_deleted", _always_report_no_membership
+    )
+
+    second_redeem = await client.post(
+        f"/invites/{code}/redeem", headers={"Authorization": f"Bearer {joiner_token}"}
+    )
+
+    assert second_redeem.status_code == 204
+    membership_rows = (
+        (
+            await db_session.execute(
+                select(LeagueUser).where(
+                    LeagueUser.league_id == league_id, LeagueUser.user_id == joiner_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(membership_rows) == 1
+
+
 async def test_redeem_targeted_invite_already_active_member_still_sets_redeemed_at(
     client, make_user, db_session
 ):

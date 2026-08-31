@@ -315,6 +315,62 @@ async def test_join_league_already_active_member_is_idempotent(client, make_user
     assert len(membership_rows) == 1
 
 
+async def test_join_league_concurrent_insert_race_is_idempotent(
+    client, make_user, db_session, monkeypatch
+):
+    """Regression test: two concurrent join requests for the same user could both miss the
+    existing-membership check before either committed, so the second's INSERT would hit the
+    real partial unique index as an unhandled IntegrityError/500 instead of the intended
+    idempotent 204. Simulated deterministically (true concurrency isn't practical here) by
+    forcing the membership lookup to report "not found" even though an active row already
+    exists, so the real INSERT hits the real unique index."""
+    from app.leagues import router as leagues_module
+
+    owner_token, _owner_id = await make_user(
+        "user_join_race_owner", "joinraceowner@example.com", "Owner"
+    )
+    create_response = await client.post(
+        "/leagues",
+        json={"name": "Join Race League"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    league_id = create_response.json()["id"]
+    await _make_league_public(client, owner_token, league_id)
+
+    joiner_token, joiner_id = await make_user(
+        "user_join_race_joiner", "joinracejoiner@example.com", "Joiner"
+    )
+    first_join = await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {joiner_token}"}
+    )
+    assert first_join.status_code == 204
+
+    async def _always_report_no_membership(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(
+        leagues_module, "get_membership_including_deleted", _always_report_no_membership
+    )
+
+    second_join = await client.post(
+        f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {joiner_token}"}
+    )
+
+    assert second_join.status_code == 204
+    membership_rows = (
+        (
+            await db_session.execute(
+                select(LeagueUser).where(
+                    LeagueUser.league_id == league_id, LeagueUser.user_id == joiner_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(membership_rows) == 1
+
+
 async def test_rejoin_after_leave_resurrects_same_row(client, make_user, db_session):
     creator_token, _creator_id = await make_user(
         "user_rejoin_creator", "rejoincreator@example.com", "Rejoin Creator"
