@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.gameplay.router import router as gameplay_router
+from app.gameplay.routers import router as gameplay_router
 from app.leagues.router import router as leagues_router
 from app.routers import health, users
 
