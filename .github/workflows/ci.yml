@@ -39,7 +39,7 @@ jobs:
 
   backend:
     needs: changes
-    if: needs.changes.outputs.backend == 'true'
+    if: needs.changes.outputs.backend == 'true' && github.event.action != 'edited'
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgresql+asyncpg://agora:agora@localhost:5432/agora
@@ -118,7 +118,7 @@ jobs:
 
   web:
     needs: changes
-    if: needs.changes.outputs.web == 'true'
+    if: needs.changes.outputs.web == 'true' && github.event.action != 'edited'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -181,7 +181,7 @@ jobs:
 
   scripts:
     needs: changes
-    if: needs.changes.outputs.scripts == 'true'
+    if: needs.changes.outputs.scripts == 'true' && github.event.action != 'edited'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -192,8 +192,11 @@ jobs:
   # Unscoped (no `needs: changes` gate) -- a secret can land in any file, not just backend/web
   # source, so this always runs. Authoritative backstop for lefthook's local pre-commit scan
   # (which can be skipped with --no-verify, or simply not run yet if a contributor hasn't
-  # installed the gitleaks binary) -- see root CLAUDE.md's "Pre-push checks" section.
+  # installed the gitleaks binary) -- see root CLAUDE.md's "Pre-push checks" section. Still
+  # skipped on a PR-body-only `edited` event, though, since a full-history secret scan can't
+  # find anything new when no commit has landed.
   secrets:
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
