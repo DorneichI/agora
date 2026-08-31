@@ -172,7 +172,15 @@ content (not left as the unmodified placeholder), `Related issue` must contain `
 in `scripts/check-pr-template.sh`, tested by `scripts/test-check-pr-template.sh`, and is wired
 into CI as an unscoped job (runs regardless of which package changed, since every PR has a
 description). It only checks structure and non-emptiness — it can't judge whether a description
-is actually meaningful.
+is actually meaningful, and it doesn't require that `Type of change` / `Affected package(s)` were
+actually pruned down — leaving every entry in either list untouched still passes, since each
+individual entry is valid on its own.
+
+The `pull_request` trigger includes `edited` (not just the default `opened`/`synchronize`/
+`reopened`) so that fixing just the PR description re-runs this check without a new commit.
+Since that trigger type is workflow-wide, `backend`/`web`/`scripts`/`secrets` are explicitly
+skipped when the triggering action is `edited` — otherwise a body-only edit would needlessly
+re-run their full test suites.
 
 ## Environments
 
