@@ -201,6 +201,83 @@ async def test_list_races_excludes_soft_deleted_races(client, db_session, make_a
     assert "2x" not in boat_classes
 
 
+async def test_list_races_filters_by_event_id(client, make_admin):
+    token, _admin_id = await make_admin("user_race_filter", "racefilter@example.com", "Admin")
+    event_one = await _create_event(client, token)
+    event_two = await _create_event(client, token)
+    await client.post(
+        "/races",
+        json={"event_id": event_one, "boat_class": "8+", "level": "varsity"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    await client.post(
+        "/races",
+        json={"event_id": event_one, "boat_class": "4+", "level": "3v"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    await client.post(
+        "/races",
+        json={"event_id": event_two, "boat_class": "2x", "level": "novice"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    response = await client.get(
+        f"/races?event_id={event_one}", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert {race["event_id"] for race in body} == {event_one}
+    assert {race["boat_class"] for race in body} == {"8+", "4+"}
+
+
+async def test_list_races_with_unknown_event_id_returns_empty(client, make_admin):
+    token, _admin_id = await make_admin(
+        "user_race_filter_unknown", "racefilterunknown@example.com", "Admin"
+    )
+    event_id = await _create_event(client, token)
+    await client.post(
+        "/races",
+        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    response = await client.get(
+        "/races?event_id=999999", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+async def test_list_races_filter_excludes_soft_deleted_races(client, db_session, make_admin):
+    token, _admin_id = await make_admin(
+        "user_race_filter_softdel", "racefiltersoftdel@example.com", "Admin"
+    )
+    event_id = await _create_event(client, token)
+    kept_response = await client.post(
+        "/races",
+        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    deleted_response = await client.post(
+        "/races",
+        json={"event_id": event_id, "boat_class": "2x", "level": "novice"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    race = await db_session.get(Race, deleted_response.json()["id"])
+    await db_session.delete(race)
+    await db_session.commit()
+
+    response = await client.get(
+        f"/races?event_id={event_id}", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    assert [race["id"] for race in response.json()] == [kept_response.json()["id"]]
+
+
 async def test_patch_race_without_token_returns_401(client):
     response = await client.patch("/races/1", json={"level": "novice"})
 

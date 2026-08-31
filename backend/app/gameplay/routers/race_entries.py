@@ -75,10 +75,11 @@ async def get_race_entry(
 
 @router.get("/race-entries", response_model=list[RaceEntryRead])
 async def list_race_entries(
+    race_id: int | None = None,
     user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> list[RaceEntry]:
-    return await repository.list_race_entries(session)
+    return await repository.list_race_entries(session, race_id=race_id)
 
 
 class RaceEntryUpdate(SQLModel):

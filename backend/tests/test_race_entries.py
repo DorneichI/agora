@@ -281,6 +281,58 @@ async def test_list_race_entries_excludes_soft_deleted_entries(client, db_sessio
     assert entry_id not in entry_ids
 
 
+async def test_list_race_entries_filters_by_race_id(client, make_admin):
+    token, _admin_id = await make_admin("user_re_filter", "refilter@example.com", "Admin")
+    event_id = await _create_event(client, token)
+    race_one = await _create_race(client, token, event_id)
+    race_two = await _create_race(client, token, event_id)
+    team_one = await _create_team(client, token, name="Crimson")
+    team_two = await _create_team(client, token, name="Bulldogs")
+
+    kept_ids = []
+    for team_id in (team_one, team_two):
+        response = await client.post(
+            "/race-entries",
+            json={"race_id": race_one, "team_id": team_id, "level": "varsity"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        kept_ids.append(response.json()["id"])
+
+    await client.post(
+        "/race-entries",
+        json={"race_id": race_two, "team_id": team_one, "level": "varsity"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    response = await client.get(
+        f"/race-entries?race_id={race_one}", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert {entry["race_id"] for entry in body} == {race_one}
+    assert sorted(entry["id"] for entry in body) == sorted(kept_ids)
+
+
+async def test_list_race_entries_with_unknown_race_id_returns_empty(client, make_admin):
+    token, _admin_id = await make_admin(
+        "user_re_filter_unknown", "refilterunknown@example.com", "Admin"
+    )
+    race_id, team_id = await _create_race_and_team(client, token)
+    await client.post(
+        "/race-entries",
+        json={"race_id": race_id, "team_id": team_id, "level": "varsity"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    response = await client.get(
+        "/race-entries?race_id=999999", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
 async def test_patch_race_entry_without_token_returns_401(client):
     response = await client.patch("/race-entries/1", json={"status": "finished"})
 
