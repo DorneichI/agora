@@ -79,9 +79,7 @@ does not yet include user predictions or points.
   live scoring yet for that to matter.
 - Standard CRUD routes per entity (`POST`/`GET`/`PATCH`/`DELETE`); mutations require admin (Phase
   3), reads require any authenticated user.
-- **Deliberately out of scope**: user predictions and the points/scoring system. The scoring
-  formula (duel margin vs. multi-boat vs. tournament outcomes) isn't settled yet, and the
-  prediction schema depends on it — both come in a later phase once decided.
+- **Deliberately out of scope**: user predictions and the points/scoring system — see Phase 8.
 
 ## Phase 5 — Usernames
 
@@ -119,3 +117,47 @@ instead of the open `POST /leagues/{id}/join` from Phase 2.
   requires Phase 5). Either can be revoked early by its creator, an admin, or the owner. The
   existing plain `POST /leagues/{id}/join` now only works on public leagues — private leagues
   require a redeemed invite.
+
+## Phase 8 — Predictions & Scoring
+
+Users can predict race outcomes before results are known, and earn points once real results are
+recorded (Phase 4). Scoring is built as a composable framework of independent components rather
+than a fixed formula, so new prediction types can be added later without rewriting what's already
+shipped. Tracked as [milestone #8](https://github.com/DorneichI/agora/milestone/8).
+
+- Prework (issues [#92](https://github.com/DorneichI/agora/issues/92),
+  [#93](https://github.com/DorneichI/agora/issues/93)): `event_id`/`race_id` query filters on the
+  existing `races`/`race-entries` list endpoints, and a required freeform `name` field on `Race` —
+  both needed before markets can reference races usefully.
+- `PredictionMarket` (one per race, holds a `scoring_config`) and `Prediction` (one per user per
+  market: a picked team, and optionally a margin threshold) — both live inside `app.gameplay`, not
+  a separate module (issue [#94](https://github.com/DorneichI/agora/issues/94)).
+- Scoring is composed from independent **components**, each self-declaring which races it's
+  eligible for and how it turns a result into points (issue
+  [#95](https://github.com/DorneichI/agora/issues/95)):
+  - **Winner** — pick the race's winner. Eligible for any race with 2+ entries. Pays either a flat
+    amount per correct pick, or a pari-mutuel pool split equally among everyone who picked
+    correctly.
+  - **Margin** — pick a margin threshold (runner-up's time minus the winner's time, regardless of
+    field size); only pays if the winner pick was also correct. Flat mode pays
+    `base × 2^(threshold / M)` (bolder threshold = bigger payout if it hits); pool mode splits a
+    fixed pool equally among everyone whose threshold was covered, ignoring boldness. `M` (the
+    "typical margin" reference constant) is either a single global value or set per-market.
+  - Both components void gracefully when results don't support grading them (no finisher at all
+    voids the whole market; fewer than two finishers voids just the margin component).
+- Market creation, prediction submission, and settlement endpoints (issues
+  [#96](https://github.com/DorneichI/agora/issues/96),
+  [#97](https://github.com/DorneichI/agora/issues/97),
+  [#98](https://github.com/DorneichI/agora/issues/98)).
+- League standings aggregating prediction points (issue
+  [#99](https://github.com/DorneichI/agora/issues/99)) — lives in `app.gameplay`, not
+  `app.leagues`, since predictions are global per-user and the import-linter contract forbids
+  `leagues → gameplay`.
+- **Deliberately out of scope for this phase**: weekly stake/bankroll allocation across multiple
+  bets (a real design problem — naive stake-weighting lets a player risklessly max-bet on obvious
+  wins; a real fix likely needs market-pricing dynamics, deferred to its own future design
+  conversation), multi-boat-specific components beyond what already generalizes (exact finish
+  order, etc.) and tournament/bracket scoring (separate future phases), real continuous-pricing
+  prediction markets (Kalshi/Polymarket-style order books — explicitly rejected as too much new
+  infrastructure for this phase), and exact market lock timing (deferred, needs its own
+  conversation about when predictions close relative to race start).
