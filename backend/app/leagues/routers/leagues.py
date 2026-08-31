@@ -1,38 +1,23 @@
-import secrets
-from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import SQLModel, select
+from sqlmodel import SQLModel
 
 from app.auth.deps import require_username
 from app.db import get_session
-from app.leagues.deps import require_league_admin, require_league_member, require_league_owner
-from app.leagues.models import (
-    League,
-    LeagueInvite,
-    LeagueInviteRead,
-    LeagueRead,
-    LeagueUser,
-    LeagueUserRead,
-)
+from app.leagues.deps import require_league_admin, require_league_owner
+from app.leagues.models import League, LeagueRead, LeagueUser, LeagueUserRead
 from app.leagues.repository import (
     get_active_membership,
-    get_invite_by_code,
     get_league_by_id,
     get_membership_including_deleted,
 )
+from app.leagues.routers._shared import is_membership_collision
 from app.models import User
 
 router = APIRouter()
-
-INVITE_LIFETIME = timedelta(days=7)
-
-# Postgres SQLSTATE for a unique-constraint violation.
-_UNIQUE_VIOLATION_SQLSTATE = "23505"
 
 
 class LeagueCreate(SQLModel):
@@ -52,40 +37,6 @@ class LeagueSettingsUpdate(SQLModel):
     visibility: LeagueVisibility | None = None
     invite_policy: InvitePolicy | None = None
     settings_policy: SettingsPolicy | None = None
-
-
-class InviteCreate(SQLModel):
-    target_username: str | None = None
-
-
-def _is_membership_collision(exc: IntegrityError) -> bool:
-    """Same reasoning as `_is_invite_code_collision` below, but for the partial unique index
-    that guards against a duplicate active `LeagueUser` row (two concurrent join/redeem
-    requests for the same user racing each other)."""
-    cause = getattr(exc.orig, "__cause__", None)
-    return (
-        getattr(cause, "sqlstate", None) == _UNIQUE_VIOLATION_SQLSTATE
-        and getattr(cause, "constraint_name", None) == "ix_leagueuser_league_id_user_id_active"
-    )
-
-
-def _is_invite_code_collision(exc: IntegrityError) -> bool:
-    """Distinguish "the generated code collided with the partial unique index" from any
-    other IntegrityError (e.g. a bad FK) so the retry loop below only retries the case it
-    actually knows how to recover from.
-
-    SQLAlchemy's asyncpg dialect wraps the driver error and re-raises it with
-    `raise translated_error from error`, so the original `asyncpg.exceptions.
-    UniqueViolationError` -- which carries the Postgres diagnostic fields `sqlstate` and
-    `constraint_name` -- is available via `exc.orig.__cause__`. `exc.orig` itself (SQLAlchemy's
-    thin DBAPI wrapper) only exposes `sqlstate`/`pgcode`, not `constraint_name`. Verified
-    empirically against a real Postgres/asyncpg unique-violation.
-    """
-    cause = getattr(exc.orig, "__cause__", None)
-    return (
-        getattr(cause, "sqlstate", None) == _UNIQUE_VIOLATION_SQLSTATE
-        and getattr(cause, "constraint_name", None) == "ix_leagueinvite_code_active"
-    )
 
 
 @router.post("/leagues", response_model=LeagueRead)
@@ -196,7 +147,7 @@ async def join_league(
             await session.commit()
         except IntegrityError as exc:
             await session.rollback()
-            if not _is_membership_collision(exc):
+            if not is_membership_collision(exc):
                 raise
     elif membership.deleted_at is not None:
         membership.deleted_at = None
@@ -331,176 +282,3 @@ async def transfer_ownership(
     await session.commit()
     await session.refresh(league)
     return league
-
-
-@router.post("/leagues/{league_id}/invites", response_model=LeagueInviteRead)
-async def create_invite(
-    league_id: int,
-    body: InviteCreate,
-    league: League = Depends(require_league_member),
-    user: User = Depends(require_username),
-    session: AsyncSession = Depends(get_session),
-) -> LeagueInvite:
-    is_owner = user.id == league.owner_id
-    if league.invite_policy == "owner_only" and not is_owner:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the league owner can create invites",
-        )
-    if league.invite_policy == "admins_only" and not is_owner:
-        membership = await get_active_membership(session, league_id, user.id)
-        if membership is None or membership.role != "admin":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="League admin privileges required to create invites",
-            )
-
-    if league.visibility == "public":
-        if body.target_username is not None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="target_username must be omitted for a public league invite",
-            )
-        target_user_id = None
-    else:
-        if body.target_username is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="target_username is required for a private league invite",
-            )
-        # Usernames are always stored lowercased (see UsernameSet's validator in
-        # app/routers/users.py), so normalize the lookup the same way rather than requiring
-        # the inviter to type the exact case the target originally chose.
-        target_user = (
-            await session.execute(select(User).where(User.username == body.target_username.lower()))
-        ).scalar_one_or_none()
-        if target_user is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No user found with that username",
-            )
-        target_user_id = target_user.id
-
-    # Captured once, before the loop: a collision's rollback (below) expires every ORM
-    # object tracked by this request's session, including `user`. Re-reading `user.id`
-    # inside the loop after that would be a synchronous lazy-load on an expired attribute,
-    # which raises MissingGreenlet outside of an awaited call. Reusing this plain int
-    # instead sidesteps that -- it needs no DB round trip and doesn't change between
-    # attempts anyway.
-    created_by = user.id
-
-    for _attempt in range(5):
-        invite = LeagueInvite(
-            league_id=league_id,
-            code=secrets.token_urlsafe(32),
-            created_by=created_by,
-            target_user_id=target_user_id,
-            expires_at=datetime.now(UTC) + INVITE_LIFETIME,
-        )
-        session.add(invite)
-        try:
-            await session.commit()
-        except IntegrityError as exc:
-            await session.rollback()
-            if _is_invite_code_collision(exc):
-                continue
-            raise
-        await session.refresh(invite)
-        return invite
-
-    raise HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="Failed to generate a unique invite code",
-    )
-
-
-@router.post("/invites/{code}/redeem", status_code=status.HTTP_204_NO_CONTENT)
-async def redeem_invite(
-    code: str,
-    user: User = Depends(require_username),
-    session: AsyncSession = Depends(get_session),
-) -> None:
-    invite = await get_invite_by_code(session, code)
-    if invite is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found")
-
-    now = datetime.now(UTC)
-    is_targeted = invite.target_user_id is not None
-
-    league_no_longer_public = False
-    if not is_targeted:
-        league = await get_league_by_id(session, invite.league_id)
-        league_no_longer_public = league is None or league.visibility != "public"
-
-    invite_is_dead = invite.revoked_at is not None or now > invite.expires_at
-    invite_already_redeemed = is_targeted and invite.redeemed_at is not None
-    if invite_is_dead or invite_already_redeemed or league_no_longer_public:
-        raise HTTPException(
-            status_code=status.HTTP_410_GONE, detail="This invite is no longer valid"
-        )
-    if is_targeted and invite.target_user_id != user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="This invite is for a different user"
-        )
-
-    if is_targeted:
-        result = await session.execute(
-            update(LeagueInvite)
-            .where(
-                LeagueInvite.id == invite.id,
-                LeagueInvite.redeemed_at.is_(None),
-                LeagueInvite.revoked_at.is_(None),
-            )
-            .values(redeemed_at=now)
-        )
-        if result.rowcount == 0:
-            raise HTTPException(
-                status_code=status.HTTP_410_GONE, detail="This invite is no longer valid"
-            )
-
-    membership = await get_membership_including_deleted(session, invite.league_id, user.id)
-
-    if membership is None:
-        session.add(LeagueUser(league_id=invite.league_id, user_id=user.id))
-    elif membership.deleted_at is not None:
-        membership.deleted_at = None
-        membership.role = "member"
-        session.add(membership)
-
-    try:
-        await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-        if not _is_membership_collision(exc):
-            raise
-
-
-@router.delete("/invites/{code}", status_code=status.HTTP_204_NO_CONTENT)
-async def revoke_invite(
-    code: str,
-    user: User = Depends(require_username),
-    session: AsyncSession = Depends(get_session),
-) -> None:
-    invite = await get_invite_by_code(session, code)
-    if invite is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found")
-
-    # The creator can always revoke their own invite, with no membership check -- that
-    # permission is tied to having created it, not to still being in the league (deliberate,
-    # see docs/superpowers/specs/2026-08-26-league-invite-codes-design.md). Anyone else must be
-    # a *current* active admin/owner of the invite's league.
-    if invite.created_by != user.id:
-        membership = await get_active_membership(session, invite.league_id, user.id)
-        if membership is None or membership.role != "admin":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not allowed to revoke this invite",
-            )
-
-    now = datetime.now(UTC)
-    if invite.redeemed_at is not None or invite.revoked_at is not None or now > invite.expires_at:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nothing left to revoke")
-
-    invite.revoked_at = now
-    session.add(invite)
-    await session.commit()

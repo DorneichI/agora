@@ -324,7 +324,7 @@ async def test_join_league_concurrent_insert_race_is_idempotent(
     idempotent 204. Simulated deterministically (true concurrency isn't practical here) by
     forcing the membership lookup to report "not found" even though an active row already
     exists, so the real INSERT hits the real unique index."""
-    from app.leagues import router as leagues_module
+    from app.leagues.routers import leagues as leagues_module
 
     owner_token, _owner_id = await make_user(
         "user_join_race_owner", "joinraceowner@example.com", "Owner"
