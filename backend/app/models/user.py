@@ -5,7 +5,7 @@ from sqlmodel import Field, SQLModel
 
 from app.soft_delete import SoftDeleteMixin
 
-USERNAME_PATTERN = re.compile(r"^[a-z0-9_]{3,20}$")
+USERNAME_PATTERN = re.compile(r"\A[a-z0-9_]{3,20}\Z")
 
 
 class User(SoftDeleteMixin, table=True):

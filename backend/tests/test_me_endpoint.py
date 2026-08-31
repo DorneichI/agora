@@ -236,6 +236,25 @@ async def test_set_username_invalid_format_returns_422(client, make_clerk_token)
     assert response.status_code == 422
 
 
+async def test_set_username_with_trailing_newline_returns_422(client, make_clerk_token):
+    """Regression test: `^...$` (unlike `\\A...\\Z`) matches immediately before a trailing
+    newline, so "alice\\n" used to pass validation as a distinct username from "alice"."""
+    token = make_clerk_token(
+        clerk_id="user_set_username_trailing_newline",
+        email="setusernametrailingnewline@example.com",
+        name="Trailing Newline",
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    response = await client.post(
+        "/me/username",
+        json={"username": "alice\n"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422
+
+
 async def test_set_username_too_short_returns_422(client, make_clerk_token):
     token = make_clerk_token(
         clerk_id="user_set_username_short", email="setusernameshort@example.com", name="Short"
