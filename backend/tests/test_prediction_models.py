@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app.gameplay.models import Event, Prediction, PredictionMarket, Race, Team
+from app.gameplay.repository import list_prediction_markets, list_predictions
 from app.models import User
 
 
@@ -183,3 +184,74 @@ async def test_prediction_recreate_after_soft_delete_allowed_by_partial_index(db
 
     assert second.id is not None
     assert second.id != first.id
+
+
+async def test_list_prediction_markets_returns_active_markets(db_session):
+    creator = await _make_creator(db_session, "user_repo_m", "repom@example.com")
+    race = await _make_race(db_session, creator)
+    market = await _make_market(db_session, creator, race)
+
+    markets = await list_prediction_markets(db_session)
+
+    assert [m.id for m in markets] == [market.id]
+
+
+async def test_list_prediction_markets_excludes_soft_deleted(db_session):
+    creator = await _make_creator(db_session, "user_repo_md", "repomd@example.com")
+    race = await _make_race(db_session, creator)
+    market = await _make_market(db_session, creator, race)
+
+    await db_session.delete(market)
+    await db_session.commit()
+
+    assert await list_prediction_markets(db_session) == []
+
+
+async def test_list_predictions_returns_all_predictions_across_markets(db_session):
+    creator = await _make_creator(db_session, "user_repo_p", "repop@example.com")
+    other = await _make_creator(db_session, "user_repo_p2", "repop2@example.com")
+    race = await _make_race(db_session, creator)
+    market = await _make_market(db_session, creator, race)
+    team = await _make_team(db_session, creator)
+
+    db_session.add(Prediction(market_id=market.id, user_id=creator.id, picked_team_id=team.id))
+    db_session.add(Prediction(market_id=market.id, user_id=other.id, picked_team_id=team.id))
+    await db_session.commit()
+
+    predictions = await list_predictions(db_session)
+
+    assert len(predictions) == 2
+
+
+async def test_list_predictions_filters_by_market_id(db_session):
+    creator = await _make_creator(db_session, "user_repo_pf", "repopf@example.com")
+    race_a = await _make_race(db_session, creator)
+    race_b = await _make_race(db_session, creator)
+    market_a = await _make_market(db_session, creator, race_a)
+    market_b = await _make_market(db_session, creator, race_b)
+    team = await _make_team(db_session, creator)
+
+    in_a = Prediction(market_id=market_a.id, user_id=creator.id, picked_team_id=team.id)
+    db_session.add(in_a)
+    db_session.add(Prediction(market_id=market_b.id, user_id=creator.id, picked_team_id=team.id))
+    await db_session.commit()
+
+    predictions = await list_predictions(db_session, market_id=market_a.id)
+
+    assert [p.id for p in predictions] == [in_a.id]
+
+
+async def test_list_predictions_excludes_soft_deleted(db_session):
+    creator = await _make_creator(db_session, "user_repo_pd", "repopd@example.com")
+    race = await _make_race(db_session, creator)
+    market = await _make_market(db_session, creator, race)
+    team = await _make_team(db_session, creator)
+
+    prediction = Prediction(market_id=market.id, user_id=creator.id, picked_team_id=team.id)
+    db_session.add(prediction)
+    await db_session.commit()
+
+    await db_session.delete(prediction)
+    await db_session.commit()
+
+    assert await list_predictions(db_session) == []
