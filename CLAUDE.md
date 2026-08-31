@@ -162,6 +162,18 @@ permanent and Codecov's free tier only covers public repos.
   coverage the way Codecov does — it can theoretically be gamed by adding a large well-covered
   file in the same PR as untested new code. Accepted trade-off for avoiding an external service.
 
+### PR template check
+
+CI fails a pull request if its description doesn't match `.github/PULL_REQUEST_TEMPLATE.md`'s
+required structure: all 5 section headers (`Summary`, `Related issue`, `Type of change`,
+`Affected package(s)`, `Test plan`) must be present, `Summary` and `Test plan` must have actual
+content (not left as the unmodified placeholder), `Related issue` must contain `Closes #<n>`, and
+`Type of change` / `Affected package(s)` may only contain recognized, non-empty entries. It lives
+in `scripts/check-pr-template.sh`, tested by `scripts/test-check-pr-template.sh`, and is wired
+into CI as an unscoped job (runs regardless of which package changed, since every PR has a
+description). It only checks structure and non-emptiness — it can't judge whether a description
+is actually meaningful.
+
 ## Environments
 
 - Two tiers beyond local dev: **staging** and **prod**. No preprod for now — can be added later

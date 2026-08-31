@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Validates a PR body against .github/PULL_REQUEST_TEMPLATE.md's required structure.
-# See docs/superpowers/specs/2026-08-31-pr-template-design.md's "CI enforcement" section for why.
+# Validates a PR body against .github/PULL_REQUEST_TEMPLATE.md's required structure: all 5
+# section headers present, Summary/Test plan non-empty, Related issue contains `Closes #<n>`,
+# and Type of change / Affected package(s) contain only recognized, non-empty entries.
 set -euo pipefail
 
 if [ "$#" -ne 1 ]; then
@@ -31,7 +32,7 @@ section_body() {
     $0 == header { in_section=1; next }
     in_section && /^## / { in_section=0 }
     in_section { print }
-  ' "$body_file" | grep -v '^<!--' | sed '/^[[:space:]]*$/d'
+  ' "$body_file" | grep -v '^<!--' | sed '/^[[:space:]]*$/d' || true
 }
 
 for header in "Summary" "Related issue" "Type of change" "Affected package(s)" "Test plan"; do

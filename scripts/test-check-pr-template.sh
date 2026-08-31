@@ -114,6 +114,31 @@ set -e
 assert_true "unmodified Test plan exits non-zero" "$([ "$status7" -ne 0 ] && echo true || echo false)"
 assert_contains "unmodified Test plan output flags it" "$out7" "unmodified empty placeholder"
 
+# Summary section truly empty: zero lines (not even a blank one) between its header and the
+# next header. Built via a direct heredoc (not by deleting a line from valid_body) so no stray
+# blank line is left behind — this is what previously made section_body's pipeline exit non-zero
+# under `set -euo pipefail` and kill the whole script silently, with no ::error:: message at all.
+cat <<'EOF' > "$work/truly_empty_summary.md"
+## Summary
+## Related issue
+Closes #42
+
+## Type of change
+- feat
+
+## Affected package(s)
+- web
+
+## Test plan
+- [x] Ran `npm test` locally.
+EOF
+set +e
+out9="$(bash "$checker" "$work/truly_empty_summary.md" 2>&1)"
+status9=$?
+set -e
+assert_true "truly empty Summary exits non-zero" "$([ "$status9" -ne 0 ] && echo true || echo false)"
+assert_contains "truly empty Summary output is not silent" "$out9" "Summary section is empty"
+
 # Multiple valid types/packages listed: pass.
 cat <<'EOF' > "$work/multi_valid.md"
 ## Summary
