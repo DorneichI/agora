@@ -24,17 +24,24 @@ EXEMPT_ROUTES = {
 
 
 def _api_routes():
-    for wrapper in app.routes:
-        # A route declared directly on `app` (e.g. `@app.get(...)` in main.py, rather than
-        # on an APIRouter passed to `include_router`) has no `original_router` and would
-        # otherwise be silently skipped by every route-gating guard in this suite.
+    yield from _flatten_routes(app.routes)
+
+
+def _flatten_routes(wrappers):
+    # A route declared directly on an APIRouter (e.g. `@app.get(...)` in main.py, or a leaf
+    # route on a sub-router) is an APIRoute directly. A route reached via `include_router`
+    # is wrapped in an `_IncludedRouter`, which itself may wrap another `include_router` call
+    # (e.g. gameplay's package router composing its five per-resource sub-routers) -- recurse
+    # through `original_router.routes` until every leaf APIRoute is found, regardless of
+    # nesting depth.
+    for wrapper in wrappers:
         if isinstance(wrapper, APIRoute):
             yield wrapper
             continue
         router = getattr(wrapper, "original_router", None)
         if router is None:
             continue
-        yield from (route for route in router.routes if isinstance(route, APIRoute))
+        yield from _flatten_routes(router.routes)
 
 
 def test_every_route_depends_on_username_gate_except_exemptions():
