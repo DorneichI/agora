@@ -1,0 +1,43 @@
+name: Chore / task
+description: Maintenance, tooling, docs, or repo-config work that isn't a bug fix or a user-facing feature.
+title: "chore: "
+labels: ["chore"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What needs to be done
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: What prompts this — tech debt, a broken workflow, a documentation gap, etc.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: What must be true for this to be considered done?
+    validations:
+      required: true
+  - type: checkboxes
+    id: package
+    attributes:
+      label: Package(s) affected
+      description: Leave unchecked if this is repo-wide/tooling and doesn't map to a single package.
+      options:
+        - label: backend
+        - label: web
+        - label: mobile
+        - label: other
+    validations:
+      required: false
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+    validations:
+      required: false
