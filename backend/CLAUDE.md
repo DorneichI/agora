@@ -116,7 +116,13 @@ own package instead of adding another shared cross-cutting layer:
 - `app/<domain>/deps.py` -- any `require_*`/`get_*` FastAPI dependency specific to this domain
   (e.g. `require_league_member`), moved out of the shared `app/deps.py`.
 - `app/<domain>/router.py` -- the FastAPI router(s) for this domain, wired into `app/main.py` as
-  `from app.<domain>.router import router as <domain>_router`.
+  `from app.<domain>.router import router as <domain>_router`. If this single file grows too
+  large for one resource's endpoints to stay readable together (issue #87 was the first case,
+  once `app/gameplay/router.py` reached 508 lines / 25 endpoints across 5 resources), split it
+  into an `app/<domain>/routers/` package instead: one file per resource, a shared helper module
+  for anything genuinely cross-resource, and an `app/<domain>/routers/__init__.py` that composes
+  the per-resource `APIRouter`s into one `router` -- `main.py`'s import becomes
+  `from app.<domain>.routers import router as <domain>_router` (package, not module).
 
 `app/deps.py` stays reserved for genuinely generic, cross-domain concerns (currently just
 `require_admin` — identity verification itself (`get_current_user`, `require_username`) lives in
@@ -129,4 +135,6 @@ does not re-export a domain package's symbols -- import them from `app.<domain>.
 `app.leagues` -> `app.gameplay` import direction is forbidden by an `import-linter` contract
 (`[tool.importlinter]` in `pyproject.toml`, enforced in CI via `uv run lint-imports`) so the two
 stay independently removable; the reverse direction (gameplay depending on leagues) is allowed
-and unchecked.
+and unchecked. `app/leagues/router.py` is still a single file; `app/gameplay/` uses the
+`routers/` package split described above (issue #87) since its router file was the one that grew
+too large.
