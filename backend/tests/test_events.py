@@ -443,6 +443,28 @@ async def test_patch_event_end_date_before_existing_start_date_returns_422(clien
     assert response.status_code == 422
 
 
+async def test_patch_event_rejects_explicit_null_start_date(client, make_admin):
+    """Regression test: `start_date` is NOT NULL, and an explicit JSON `null` used to reach
+    `updates.get("start_date", event.start_date)` -- which returns the stored `None` rather
+    than the fallback, since the key is present -- crashing the date-range comparison with a
+    TypeError instead of returning 422."""
+    token, _admin_id = await make_admin(
+        "user_event_patch_null_start", "eventpatchnullstart@example.com", "Admin"
+    )
+    create_response = await client.post(
+        "/events", json=EVENT_PAYLOAD, headers={"Authorization": f"Bearer {token}"}
+    )
+    event_id = create_response.json()["id"]
+
+    response = await client.patch(
+        f"/events/{event_id}",
+        json={"start_date": None},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422
+
+
 async def test_patch_event_with_empty_body_does_not_set_updated_by(client, make_admin):
     token, _admin_id = await make_admin(
         "user_event_patch_noop", "eventpatchnoop@example.com", "Admin"
