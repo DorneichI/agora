@@ -39,13 +39,12 @@ body:
     id: package
     attributes:
       label: Package(s) affected
+      description: Check at least one that applies.
       options:
         - label: backend
         - label: web
         - label: mobile
         - label: other
-    validations:
-      required: true
   - type: textarea
     id: environment
     attributes:
