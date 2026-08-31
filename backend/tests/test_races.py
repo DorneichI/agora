@@ -478,3 +478,68 @@ async def test_delete_race_with_active_race_entry_returns_409(client, make_admin
         f"/races/{race_id}", headers={"Authorization": f"Bearer {token}"}
     )
     assert get_response.status_code == 200
+
+
+async def test_create_race_without_name_returns_422(client, make_admin):
+    token, _admin_id = await make_admin("user_race_noname", "racenoname@example.com", "Admin")
+    event_id = await _create_event(client, token)
+
+    response = await client.post(
+        "/races",
+        json={"event_id": event_id, "boat_class": "8+", "level": "varsity"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422
+
+
+async def test_patch_race_with_null_name_returns_422(client, make_admin):
+    token, _admin_id = await make_admin("user_race_nullname", "racenullname@example.com", "Admin")
+    event_id = await _create_event(client, token)
+    create_response = await client.post(
+        "/races",
+        json={
+            "name": "Varsity 8+ Heat 1",
+            "event_id": event_id,
+            "boat_class": "8+",
+            "level": "varsity",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    race_id = create_response.json()["id"]
+
+    response = await client.patch(
+        f"/races/{race_id}",
+        json={"name": None},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422
+    assert "name" in response.json()["detail"]
+
+
+async def test_patch_race_updates_name(client, make_admin):
+    token, admin_id = await make_admin("user_race_rename", "racerename@example.com", "Admin")
+    event_id = await _create_event(client, token)
+    create_response = await client.post(
+        "/races",
+        json={
+            "name": "Varsity 8+ Heat 1",
+            "event_id": event_id,
+            "boat_class": "8+",
+            "level": "varsity",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    race_id = create_response.json()["id"]
+
+    response = await client.patch(
+        f"/races/{race_id}",
+        json={"name": "Mens Second Varsity Heat 3"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["name"] == "Mens Second Varsity Heat 3"
+    assert body["updated_by"] == admin_id
