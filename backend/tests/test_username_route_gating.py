@@ -25,6 +25,12 @@ EXEMPT_ROUTES = {
 
 def _api_routes():
     for wrapper in app.routes:
+        # A route declared directly on `app` (e.g. `@app.get(...)` in main.py, rather than
+        # on an APIRouter passed to `include_router`) has no `original_router` and would
+        # otherwise be silently skipped by every route-gating guard in this suite.
+        if isinstance(wrapper, APIRoute):
+            yield wrapper
+            continue
         router = getattr(wrapper, "original_router", None)
         if router is None:
             continue
