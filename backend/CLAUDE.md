@@ -151,3 +151,11 @@ above -- `app/gameplay/router.py` was the first to grow too large (issue #87, at
 endpoints across 5 resources), and `app/leagues/router.py` followed the same pattern once the
 automated file-length check (issue #102) flagged it at 506 lines (leagues + invites endpoints
 split into `app/leagues/routers/leagues.py` and `app/leagues/routers/invites.py`).
+
+**A route's URL prefix does not decide which module owns it.** `GET
+/leagues/{league_id}/standings` lives in `app/gameplay/routers/standings.py`, not in
+`app/leagues/`, because it has to read league membership *and* prediction points at once and only
+the `gameplay -> leagues` import direction is permitted. Any future endpoint that spans both
+domains belongs on the `app.gameplay` side for the same reason, whatever its URL says. Give such
+a module a header comment explaining the mismatch — it is invisible from the route path alone
+(issue #99 was the first case).
