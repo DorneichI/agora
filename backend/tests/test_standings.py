@@ -303,3 +303,135 @@ async def test_standings_without_token_returns_401(client):
     response = await client.get("/leagues/1/standings")
 
     assert response.status_code == 401
+
+
+async def test_standings_includes_member_with_no_predictions_as_zero(client, make_user, db_session):
+    """Called out separately from the three-member test because this is the exact case a
+    single LEFT JOIN + global soft-delete filter would silently drop."""
+    token, owner_id = await make_user("user_st_7", "st7@example.com", "Owner")
+    await _set_username(db_session, owner_id, "solo")
+
+    league_id = await _seed_league(db_session, owner_id, [owner_id])
+
+    response = await client.get(
+        f"/leagues/{league_id}/standings", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == [{"user_id": owner_id, "username": "solo", "points": 0.0}]
+
+
+async def test_standings_ignores_unsettled_predictions(client, make_user, db_session):
+    token, owner_id = await make_user("user_st_8", "st8@example.com", "Owner")
+    await _set_username(db_session, owner_id, "pending")
+
+    league_id = await _seed_league(db_session, owner_id, [owner_id])
+    team_id, market_ids = await _seed_markets(db_session, owner_id, 1)
+    db_session.add(Prediction(market_id=market_ids[0], user_id=owner_id, picked_team_id=team_id))
+    await db_session.commit()
+
+    response = await client.get(
+        f"/leagues/{league_id}/standings", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.json() == [{"user_id": owner_id, "username": "pending", "points": 0.0}]
+
+
+async def test_standings_excludes_departed_member(client, make_user, db_session):
+    token, owner_id = await make_user("user_st_9", "st9@example.com", "Owner")
+    leaver_token, leaver_id = await make_user("user_st_10", "st10@example.com", "Leaver")
+    await _set_username(db_session, owner_id, "stayer")
+    await _set_username(db_session, leaver_id, "goner")
+
+    league_id = await _seed_league(db_session, owner_id, [owner_id, leaver_id])
+
+    leave_response = await client.post(
+        f"/leagues/{league_id}/leave", headers={"Authorization": f"Bearer {leaver_token}"}
+    )
+    assert leave_response.status_code == 204
+
+    response = await client.get(
+        f"/leagues/{league_id}/standings", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert [row["user_id"] for row in response.json()] == [owner_id]
+
+
+async def test_standings_breaks_ties_alphabetically_by_username(client, make_user, db_session):
+    token, first_id = await make_user("user_st_11", "st11@example.com", "First")
+    _second_token, second_id = await make_user("user_st_12", "st12@example.com", "Second")
+    # Deliberately reversed: the lower user id gets the later username, so a passing
+    # assertion cannot be explained by insertion order.
+    await _set_username(db_session, first_id, "zoe")
+    await _set_username(db_session, second_id, "adam")
+
+    league_id = await _seed_league(db_session, first_id, [first_id, second_id])
+    team_id, market_ids = await _seed_markets(db_session, first_id, 1)
+    db_session.add_all(
+        [
+            Prediction(
+                market_id=market_ids[0],
+                user_id=first_id,
+                picked_team_id=team_id,
+                points_awarded=7.0,
+            ),
+            Prediction(
+                market_id=market_ids[0],
+                user_id=second_id,
+                picked_team_id=team_id,
+                points_awarded=7.0,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    response = await client.get(
+        f"/leagues/{league_id}/standings", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert [row["username"] for row in response.json()] == ["adam", "zoe"]
+
+
+async def test_standings_totals_are_global_not_league_scoped(client, make_user, db_session):
+    """Predictions have no league of their own -- a member's total is every settled
+    prediction they hold, regardless of which league (if any) the market relates to. This
+    pins the premise the endpoint's placement in app.gameplay rests on."""
+    token, member_id = await make_user("user_st_13", "st13@example.com", "Member")
+    _outsider_token, outsider_id = await make_user("user_st_14", "st14@example.com", "Outsider")
+    await _set_username(db_session, member_id, "member")
+
+    league_id = await _seed_league(db_session, member_id, [member_id])
+    # A second league the member does not belong to; its existence must not change totals.
+    await _seed_league(db_session, outsider_id, [outsider_id])
+
+    team_id, market_ids = await _seed_markets(db_session, member_id, 2)
+    db_session.add_all(
+        [
+            Prediction(
+                market_id=market_ids[0],
+                user_id=member_id,
+                picked_team_id=team_id,
+                points_awarded=1.0,
+            ),
+            Prediction(
+                market_id=market_ids[1],
+                user_id=member_id,
+                picked_team_id=team_id,
+                points_awarded=2.0,
+            ),
+            # The outsider's points must not leak into the member's row.
+            Prediction(
+                market_id=market_ids[0],
+                user_id=outsider_id,
+                picked_team_id=team_id,
+                points_awarded=50.0,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    response = await client.get(
+        f"/leagues/{league_id}/standings", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.json() == [{"user_id": member_id, "username": "member", "points": 3.0}]
