@@ -220,3 +220,19 @@ class PredictionRead(SQLModel):
     picked_team_id: int
     margin_threshold_seconds: float | None
     points_awarded: float | None
+
+
+class LeagueStandingRead(SQLModel):
+    """One row of GET /leagues/{league_id}/standings -- a league member and their
+    season-to-date settled prediction points. Unlike the other *Read classes here it is
+    not the public shape of a single table: it pairs league membership (app.leagues) with
+    aggregated prediction points (app.gameplay).
+
+    `username` mirrors User.username's nullability rather than asserting non-null. In
+    practice a member always has one, since every path into a league is gated on
+    require_username -- but the column itself is nullable and the response type should not
+    claim an invariant the database does not enforce."""
+
+    user_id: int
+    username: str | None
+    points: float

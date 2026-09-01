@@ -223,3 +223,83 @@ async def test_sum_settled_points_by_user_ignores_users_not_asked_for(db_session
 
 async def test_sum_settled_points_by_user_handles_empty_user_list(db_session):
     assert await sum_settled_points_by_user(db_session, []) == {}
+
+
+async def _set_username(db_session, user_id, username):
+    """conftest's make_user assigns a generated `user{id}` username. Tests that assert on
+    ordering need to control it, since ties break alphabetically."""
+    user = await db_session.get(User, user_id)
+    user.username = username
+    db_session.add(user)
+    await db_session.commit()
+
+
+async def test_standings_returns_every_member_sorted_by_points(client, make_user, db_session):
+    """Acceptance criterion #1: three members, some with settled predictions and some
+    without, all returned with correct totals, sorted descending."""
+    lead_token, lead_id = await make_user("user_st_1", "st1@example.com", "Lead")
+    _mid_token, mid_id = await make_user("user_st_2", "st2@example.com", "Mid")
+    _zero_token, zero_id = await make_user("user_st_3", "st3@example.com", "Zero")
+    await _set_username(db_session, lead_id, "lead")
+    await _set_username(db_session, mid_id, "mid")
+    await _set_username(db_session, zero_id, "zero")
+
+    league_id = await _seed_league(db_session, lead_id, [lead_id, mid_id, zero_id])
+    team_id, market_ids = await _seed_markets(db_session, lead_id, 2)
+    db_session.add_all(
+        [
+            Prediction(
+                market_id=market_ids[0], user_id=lead_id, picked_team_id=team_id, points_awarded=6.0
+            ),
+            Prediction(
+                market_id=market_ids[1], user_id=lead_id, picked_team_id=team_id, points_awarded=4.0
+            ),
+            Prediction(
+                market_id=market_ids[0], user_id=mid_id, picked_team_id=team_id, points_awarded=2.5
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    response = await client.get(
+        f"/leagues/{league_id}/standings",
+        headers={"Authorization": f"Bearer {lead_token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {"user_id": lead_id, "username": "lead", "points": 10.0},
+        {"user_id": mid_id, "username": "mid", "points": 2.5},
+        {"user_id": zero_id, "username": "zero", "points": 0.0},
+    ]
+
+
+async def test_standings_rejects_non_member(client, make_user, db_session):
+    """Acceptance criterion #2."""
+    _owner_token, owner_id = await make_user("user_st_4", "st4@example.com", "Owner")
+    outsider_token, _outsider_id = await make_user("user_st_5", "st5@example.com", "Outsider")
+
+    league_id = await _seed_league(db_session, owner_id, [owner_id])
+
+    response = await client.get(
+        f"/leagues/{league_id}/standings",
+        headers={"Authorization": f"Bearer {outsider_token}"},
+    )
+
+    assert response.status_code == 403
+
+
+async def test_standings_unknown_league_returns_404(client, make_user):
+    token, _user_id = await make_user("user_st_6", "st6@example.com", "Seeker")
+
+    response = await client.get(
+        "/leagues/999999/standings", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 404
+
+
+async def test_standings_without_token_returns_401(client):
+    response = await client.get("/leagues/1/standings")
+
+    assert response.status_code == 401
