@@ -1,6 +1,7 @@
 from datetime import date
 
-from app.gameplay.models import Event, PredictionMarket, Race, Team
+from app.gameplay.models import Event, Prediction, PredictionMarket, Race, Team
+from app.gameplay.repository import sum_settled_points_by_user
 from app.leagues.models import League, LeagueUser
 from app.leagues.repository import list_active_members
 from app.models import User
@@ -107,3 +108,118 @@ async def test_list_active_members_excludes_other_leagues(db_session):
     rows = await list_active_members(db_session, league_id)
 
     assert {user.id for _membership, user in rows} == {owner.id}
+
+
+async def test_sum_settled_points_by_user_totals_across_markets(db_session):
+    scorer = User(clerk_id="user_ssp_1", email="ssp1@example.com", username="scorer")
+    db_session.add(scorer)
+    await db_session.commit()
+
+    team_id, market_ids = await _seed_markets(db_session, scorer.id, 3)
+    db_session.add_all(
+        [
+            Prediction(
+                market_id=market_ids[0],
+                user_id=scorer.id,
+                picked_team_id=team_id,
+                points_awarded=3.0,
+            ),
+            Prediction(
+                market_id=market_ids[1],
+                user_id=scorer.id,
+                picked_team_id=team_id,
+                points_awarded=1.5,
+            ),
+            # Unsettled: points_awarded is still NULL, so it must contribute nothing.
+            Prediction(
+                market_id=market_ids[2],
+                user_id=scorer.id,
+                picked_team_id=team_id,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    totals = await sum_settled_points_by_user(db_session, [scorer.id])
+
+    assert totals == {scorer.id: 4.5}
+
+
+async def test_sum_settled_points_by_user_omits_users_without_settled_predictions(db_session):
+    scorer = User(clerk_id="user_ssp_2", email="ssp2@example.com", username="scorer2")
+    idler = User(clerk_id="user_ssp_3", email="ssp3@example.com", username="idler")
+    db_session.add_all([scorer, idler])
+    await db_session.commit()
+
+    team_id, market_ids = await _seed_markets(db_session, scorer.id, 1)
+    db_session.add(
+        Prediction(
+            market_id=market_ids[0],
+            user_id=scorer.id,
+            picked_team_id=team_id,
+            points_awarded=2.0,
+        )
+    )
+    await db_session.commit()
+
+    totals = await sum_settled_points_by_user(db_session, [scorer.id, idler.id])
+
+    assert totals == {scorer.id: 2.0}
+    assert idler.id not in totals
+
+
+async def test_sum_settled_points_by_user_excludes_soft_deleted_predictions(db_session):
+    scorer = User(clerk_id="user_ssp_4", email="ssp4@example.com", username="scorer3")
+    db_session.add(scorer)
+    await db_session.commit()
+
+    team_id, market_ids = await _seed_markets(db_session, scorer.id, 2)
+    kept = Prediction(
+        market_id=market_ids[0], user_id=scorer.id, picked_team_id=team_id, points_awarded=5.0
+    )
+    removed = Prediction(
+        market_id=market_ids[1], user_id=scorer.id, picked_team_id=team_id, points_awarded=100.0
+    )
+    db_session.add_all([kept, removed])
+    await db_session.commit()
+
+    await db_session.delete(removed)  # soft delete
+    await db_session.commit()
+
+    totals = await sum_settled_points_by_user(db_session, [scorer.id])
+
+    assert totals == {scorer.id: 5.0}
+
+
+async def test_sum_settled_points_by_user_ignores_users_not_asked_for(db_session):
+    asked = User(clerk_id="user_ssp_5", email="ssp5@example.com", username="asked")
+    other = User(clerk_id="user_ssp_6", email="ssp6@example.com", username="other")
+    db_session.add_all([asked, other])
+    await db_session.commit()
+
+    team_id, market_ids = await _seed_markets(db_session, asked.id, 1)
+    db_session.add_all(
+        [
+            Prediction(
+                market_id=market_ids[0],
+                user_id=asked.id,
+                picked_team_id=team_id,
+                points_awarded=1.0,
+            ),
+            Prediction(
+                market_id=market_ids[0],
+                user_id=other.id,
+                picked_team_id=team_id,
+                points_awarded=99.0,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    totals = await sum_settled_points_by_user(db_session, [asked.id])
+
+    assert totals == {asked.id: 1.0}
+
+
+async def test_sum_settled_points_by_user_handles_empty_user_list(db_session):
+    assert await sum_settled_points_by_user(db_session, []) == {}
