@@ -27,7 +27,13 @@ async def _make_race(db_session, creator):
     db_session.add(event)
     await db_session.commit()
 
-    race = Race(event_id=event.id, boat_class="8+", level="varsity", created_by=creator.id)
+    race = Race(
+        name="Varsity 8+ Heat 1",
+        event_id=event.id,
+        boat_class="8+",
+        level="varsity",
+        created_by=creator.id,
+    )
     db_session.add(race)
     await db_session.commit()
     return race
