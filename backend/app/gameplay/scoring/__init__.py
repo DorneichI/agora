@@ -36,6 +36,7 @@ __all__ = [
     "WinnerComponent",
     "find_winner",
     "settle_market",
+    "validate_prediction_payload",
     "validate_scoring_config",
 ]
 
@@ -75,6 +76,22 @@ def validate_scoring_config(config: dict, entry_count: int) -> None:
         if not component.is_eligible(entry_count):
             raise ScoringConfigError(f"{name}: not eligible for a race with {entry_count} entries")
         component.validate_market_config(component_config)
+
+
+def validate_prediction_payload(scoring_config: dict, payload: dict) -> None:
+    """Check a submitted prediction's payload against every component mentioned in the
+    market's scoring_config -- whether that component is enabled or explicitly disabled.
+    Unlike validate_scoring_config, a disabled component still runs its own
+    validate_prediction_payload: that's what rejects a payload field that doesn't belong on
+    a disabled component (e.g. margin_threshold_seconds when margin is off). A component
+    absent from scoring_config entirely is skipped -- nothing was ever configured for it, so
+    there's nothing to check the payload against.
+
+    Raises ScoringPayloadError if any present component's requirement isn't met."""
+    for name, component in COMPONENTS.items():
+        if name not in scoring_config:
+            continue
+        component.validate_prediction_payload(_effective_config(scoring_config, name), payload)
 
 
 def settle_market(

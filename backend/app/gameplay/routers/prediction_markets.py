@@ -2,7 +2,7 @@
 
 Settlement (issue #98) turns recorded race results plus a market's predictions into points,
 using the scoring framework in app.gameplay.scoring (issue #95/#107). Prediction submission
-(issue #97) is a separate concern and lives elsewhere once it lands.
+(issue #97) is a separate concern -- see predictions.py.
 """
 
 from datetime import UTC, datetime
