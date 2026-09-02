@@ -1,4 +1,8 @@
-from app.gameplay.models import Prediction
+from datetime import UTC, datetime
+
+from sqlmodel import select
+
+from app.gameplay.models import Prediction, PredictionMarket
 
 EVENT_PAYLOAD = {
     "name": "Head of the Charles",
@@ -193,8 +197,6 @@ async def test_resubmitting_updates_existing_prediction_instead_of_duplicating(
     assert second.json()["id"] == first_id
     assert second.json()["picked_team_id"] == team_ids[1]
 
-    from sqlmodel import select
-
     rows = (
         (
             await db_session.execute(
@@ -248,15 +250,11 @@ async def test_submit_prediction_with_nonexistent_market_id_returns_422(client, 
 async def test_submit_prediction_to_settled_market_returns_422(
     client, make_admin, make_user, db_session
 ):
-    from datetime import UTC, datetime
-
     admin_token, admin_id = await make_admin(
         "user_pred_settled_admin", "predsettledadmin@example.com", "Admin"
     )
     race_id, team_ids = await _create_race_with_entries(client, admin_token)
     market_id = await _create_market(client, admin_token, race_id, WINNER_FLAT_CONFIG)
-
-    from app.gameplay.models import PredictionMarket
 
     market = await db_session.get(PredictionMarket, market_id)
     market.settled_at = datetime.now(UTC)

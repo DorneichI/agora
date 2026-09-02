@@ -3,6 +3,7 @@ and read back predictions. Market creation/read (issue #96) lives in prediction_
 settlement (issue #98) also lives there."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, select
 
@@ -94,7 +95,14 @@ async def create_or_update_prediction(
         margin_threshold_seconds=body.margin_threshold_seconds,
     )
     session.add(prediction)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A Prediction for this market_id and user_id was just created concurrently",
+        ) from exc
     return prediction
 
 
