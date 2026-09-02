@@ -2,7 +2,7 @@
 and read back predictions. Market creation/read (issue #96) lives in prediction_markets.py;
 settlement (issue #98) also lives there."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel, select
@@ -66,6 +66,7 @@ class PredictionCreate(SQLModel):
 @router.post("/predictions", response_model=PredictionRead)
 async def create_or_update_prediction(
     body: PredictionCreate,
+    response: Response,
     user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> Prediction:
@@ -88,6 +89,7 @@ async def create_or_update_prediction(
         await session.commit()
         return existing
 
+    response.status_code = status.HTTP_201_CREATED
     prediction = Prediction(
         market_id=body.market_id,
         user_id=user.id,
