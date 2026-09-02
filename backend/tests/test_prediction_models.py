@@ -261,3 +261,15 @@ async def test_list_predictions_excludes_soft_deleted(db_session):
     await db_session.commit()
 
     assert await list_predictions(db_session) == []
+
+
+async def test_list_prediction_markets_filters_by_race_id(db_session):
+    creator = await _make_creator(db_session, "user_repo_mf", "repomf@example.com")
+    race_a = await _make_race(db_session, creator)
+    race_b = await _make_race(db_session, creator)
+    market_a = await _make_market(db_session, creator, race_a)
+    await _make_market(db_session, creator, race_b)
+
+    markets = await list_prediction_markets(db_session, race_id=race_a.id)
+
+    assert [m.id for m in markets] == [market_a.id]
