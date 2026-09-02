@@ -1,1 +1,5 @@
 blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/DorneichI/agora/security/advisories/new
+    about: Please do not report security vulnerabilities as public issues — use this private advisory flow instead.
