@@ -75,7 +75,7 @@ scratch:
 |---|---|---|
 | No/invalid/missing credentials | `401` | RFC 9110 §15.5.2 — identity itself can't be established |
 | Auth provider (Clerk) unreachable | `503` | Not a client error — transient upstream outage, not "your token is bad" |
-| Authenticated, but lacks the role/membership/ownership *this caller* needs for the action | `403` | RFC 9110 §15.5.4 — identity known, server refuses to authorize this specific caller. See `## Authorization` above for the role model itself. |
+| Authenticated, but lacks the role/membership/ownership *this caller* needs for the action, including incomplete-profile gates (e.g. a required username not yet set) | `403` | RFC 9110 §15.5.4 — identity known, server refuses to authorize this specific caller. See `## Authorization` above for the role model itself. |
 | A business rule blocks this action for *anyone*, independent of who's asking (e.g. a league's owner can't be kicked; a private league can't be self-joined) | `409` | Not an authorization failure — the target resource's own state conflicts with the action, regardless of caller identity. This is the line that separates it from the `403` bucket above. |
 | Resource exists, but its current (still-reversible) state conflicts with this action (a settled `PredictionMarket` rejecting a new prediction; a membership role toggle that's a no-op; a delete blocked because another active row still references it) | `409` | RFC 9110 §15.5.10 — general conflict with the current state of the target resource |
 | Resource is permanently gone (an invite that's expired, been revoked, or already been redeemed) | `410` | RFC 9110 §15.5.11 — Gone is specifically for access that used to be valid and is now permanently over, not just temporarily blocked |
@@ -91,6 +91,10 @@ promoting/demoting a league admin, transferring league ownership, setting a user
 Endpoints that create a resource but intentionally return no body (`join`/`leave`/`redeem`/
 `revoke`) stay `204` rather than `201`, since `201`'s implied "here's what got created" doesn't
 fit a route that returns nothing.
+
+A `500` for a genuine server-side failure (e.g. exhausting retries on a collision-prone random
+value) isn't in this table — it's not a situation to replicate elsewhere, just let it propagate
+and get logged.
 
 ## API contract between backend and clients
 
