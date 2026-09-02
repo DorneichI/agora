@@ -39,8 +39,13 @@ async def list_race_entries(session: AsyncSession, race_id: int | None = None) -
     return list((await session.execute(statement)).scalars().all())
 
 
-async def list_prediction_markets(session: AsyncSession) -> list[PredictionMarket]:
-    return list((await session.execute(select(PredictionMarket))).scalars().all())
+async def list_prediction_markets(
+    session: AsyncSession, race_id: int | None = None
+) -> list[PredictionMarket]:
+    statement = select(PredictionMarket)
+    if race_id is not None:
+        statement = statement.where(PredictionMarket.race_id == race_id)
+    return list((await session.execute(statement)).scalars().all())
 
 
 async def list_predictions(session: AsyncSession, market_id: int | None = None) -> list[Prediction]:
