@@ -1,3 +1,12 @@
+"""Prediction markets: creation, read/list, and settlement.
+
+Settlement (issue #98) turns recorded race results plus a market's predictions into points,
+using the scoring framework in app.gameplay.scoring (issue #95/#107). Prediction submission
+(issue #97) is a separate concern and lives elsewhere once it lands.
+"""
+
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,8 +17,14 @@ from app.crud_helpers import get_or_404, validate_fk_exists
 from app.db import get_session
 from app.deps import require_admin
 from app.gameplay import repository
-from app.gameplay.models import PredictionMarket, PredictionMarketRead, Race
-from app.gameplay.scoring import ScoringConfigError, validate_scoring_config
+from app.gameplay.models import (
+    Prediction,
+    PredictionMarket,
+    PredictionMarketRead,
+    PredictionRead,
+    Race,
+)
+from app.gameplay.scoring import ScoringConfigError, settle_market, validate_scoring_config
 from app.models import User
 
 router = APIRouter()
@@ -93,3 +108,34 @@ async def list_prediction_markets(
     session: AsyncSession = Depends(get_session),
 ) -> list[PredictionMarket]:
     return await repository.list_prediction_markets(session, race_id=race_id)
+
+
+@router.post(
+    "/prediction-markets/{prediction_market_id}/settle", response_model=list[PredictionRead]
+)
+async def settle_prediction_market(
+    prediction_market_id: int,
+    admin: User = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> list[Prediction]:
+    market = await get_or_404(session, PredictionMarket, prediction_market_id)
+    if market.settled_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="PredictionMarket is already settled",
+        )
+
+    race_entries = await repository.list_race_entries(session, race_id=market.race_id)
+    predictions = await repository.list_predictions(session, market_id=market.id)
+
+    totals = settle_market(market, predictions, race_entries)
+    for prediction in predictions:
+        prediction.points_awarded = totals[prediction.id]
+        session.add(prediction)
+
+    market.settled_at = datetime.now(UTC)
+    market.updated_by = admin.id
+    session.add(market)
+    await session.commit()
+
+    return predictions

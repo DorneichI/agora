@@ -51,6 +51,7 @@ ADMIN_GATED_ROUTES = {
     ("POST", "/venues"),
     ("PATCH", "/venues/{venue_id}"),
     ("DELETE", "/venues/{venue_id}"),
+    ("POST", "/prediction-markets/{prediction_market_id}/settle"),
 }
 
 
