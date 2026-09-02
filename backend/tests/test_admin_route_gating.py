@@ -32,6 +32,7 @@ NON_ADMIN_MUTATING_ROUTES = {
     ("POST", "/leagues/{league_id}/invites"),
     ("POST", "/invites/{code}/redeem"),
     ("DELETE", "/invites/{code}"),
+    ("POST", "/predictions"),
 }
 
 # Every mutating route on a resource introduced in phases 3/4 must depend on require_admin.
