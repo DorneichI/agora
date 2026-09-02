@@ -167,3 +167,72 @@ async def test_create_prediction_market_with_ineligible_config_returns_422(clien
     )
 
     assert response.status_code == 422
+
+
+async def test_get_prediction_market_without_token_returns_401(client):
+    response = await client.get("/prediction-markets/1")
+
+    assert response.status_code == 401
+
+
+async def test_get_prediction_market_without_username_returns_403(client, make_clerk_token):
+    token = make_clerk_token(
+        clerk_id="user_pm_no_username", email="pmnousername@example.com", name="No Username"
+    )
+    await client.get("/me", headers={"Authorization": f"Bearer {token}"})
+
+    response = await client.get(
+        "/prediction-markets/1", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 403
+
+
+async def test_get_prediction_market_as_non_admin_succeeds(client, make_user, make_admin):
+    token, _admin_id = await make_admin("user_pm_get_admin", "pmgetadmin@example.com", "Admin")
+    race_id = await _create_race_with_entries(client, token)
+    create_response = await client.post(
+        "/prediction-markets",
+        json={"race_id": race_id, "scoring_config": WINNER_FLAT_CONFIG},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    market_id = create_response.json()["id"]
+
+    reader_token, _reader_id = await make_user("user_pm_reader", "pmreader@example.com", "Reader")
+    response = await client.get(
+        f"/prediction-markets/{market_id}", headers={"Authorization": f"Bearer {reader_token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["race_id"] == race_id
+
+
+async def test_get_nonexistent_prediction_market_returns_404(client, make_user):
+    token, _user_id = await make_user("user_pm_missing", "pmmissing@example.com", "Missing")
+
+    response = await client.get(
+        "/prediction-markets/999999", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 404
+
+
+async def test_get_soft_deleted_prediction_market_returns_404(client, db_session, make_admin):
+    token, _admin_id = await make_admin("user_pm_softdel", "pmsoftdel@example.com", "Admin")
+    race_id = await _create_race_with_entries(client, token)
+    create_response = await client.post(
+        "/prediction-markets",
+        json={"race_id": race_id, "scoring_config": WINNER_FLAT_CONFIG},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    market_id = create_response.json()["id"]
+
+    market = await db_session.get(PredictionMarket, market_id)
+    await db_session.delete(market)
+    await db_session.commit()
+
+    response = await client.get(
+        f"/prediction-markets/{market_id}", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 404
