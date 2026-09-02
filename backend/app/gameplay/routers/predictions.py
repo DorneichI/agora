@@ -18,7 +18,7 @@ from app.models import User
 router = APIRouter()
 
 
-async def _get_market_or_422(market_id: int, session: AsyncSession) -> PredictionMarket:
+async def _get_open_market(market_id: int, session: AsyncSession) -> PredictionMarket:
     market = (
         await session.execute(select(PredictionMarket).where(PredictionMarket.id == market_id))
     ).scalar_one_or_none()
@@ -29,7 +29,7 @@ async def _get_market_or_422(market_id: int, session: AsyncSession) -> Predictio
         )
     if market.settled_at is not None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_409_CONFLICT,
             detail="PredictionMarket is already settled",
         )
     return market
@@ -69,7 +69,7 @@ async def create_or_update_prediction(
     user: User = Depends(require_username),
     session: AsyncSession = Depends(get_session),
 ) -> Prediction:
-    market = await _get_market_or_422(body.market_id, session)
+    market = await _get_open_market(body.market_id, session)
     await _validate_picked_team_id(body.picked_team_id, market.race_id, session)
     _validate_payload(market, body.margin_threshold_seconds)
 

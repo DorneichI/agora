@@ -247,7 +247,7 @@ async def test_submit_prediction_with_nonexistent_market_id_returns_422(client, 
     assert response.status_code == 422
 
 
-async def test_submit_prediction_to_settled_market_returns_422(
+async def test_submit_prediction_to_settled_market_returns_409(
     client, make_admin, make_user, db_session
 ):
     admin_token, admin_id = await make_admin(
@@ -271,7 +271,7 @@ async def test_submit_prediction_to_settled_market_returns_422(
         headers={"Authorization": f"Bearer {user_token}"},
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 409
 
 
 async def test_get_prediction_without_token_returns_401(client):
