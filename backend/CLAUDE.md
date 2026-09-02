@@ -88,6 +88,9 @@ by `alembic upgrade head` (re-runs every migration from scratch).
 - **Soft delete**: every table uses `SoftDeleteMixin` (see `docs/architecture.md`'s "Soft delete"
   section) — never a plain unique constraint on a soft-deletable table, always a partial unique
   index scoped to `WHERE deleted_at IS NULL`.
+- **HTTP status codes**: which situation maps to which code (401 vs 403 vs 404 vs 409 vs 410 vs
+  422, and 200 vs 201 vs 204) is a written convention, not a per-endpoint judgment call — see
+  `docs/architecture.md`'s "HTTP status codes" section.
 - No hand-rolled password storage — auth identity comes from Clerk (see
   `docs/architecture.md#auth`); the backend only verifies Clerk-issued JWTs.
 - **Authorization**: `User.role` is a plain `str` (`"user"` | `"admin"`, default `"user"`) — no DB
