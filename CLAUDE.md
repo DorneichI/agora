@@ -39,6 +39,10 @@ discrepancy to the user and let them decide how to resolve it.
 If a task touches more than one of backend/web/mobile, read each relevant subfolder's CLAUDE.md
 first.
 
+There is no root or per-package README — deliberately, to avoid another document that can go
+stale; these CLAUDE.md files (plus `docs/`) are the intended single source of truth. Revisit later
+if a first-time-visitor need shows up that they don't cover.
+
 ## Durable knowledge belongs in this repo, not in AI-tool memory
 
 Do not rely on any AI coding assistant's built-in memory/notes feature to retain project
@@ -136,9 +140,7 @@ pre-flight before that — don't skip them with `--no-verify`.
 ### File-length enforcement
 
 Both `backend/` and `web/` source files are capped at 400 lines, hard-enforced in `pre-commit`,
-`pre-push`, and CI (tracked in [issue #102](https://github.com/DorneichI/agora/issues/102), whose
-own PR split `app/leagues/router.py` — the file that motivated this check — once it hit 506
-lines).
+`pre-push`, and CI (tracked in [issue #102](https://github.com/DorneichI/agora/issues/102)).
 
 - **Web** uses ESLint's built-in `max-lines` rule (`web/eslint.config.mjs`) — enforced for free
   everywhere ESLint already runs (`web-lint`/`web-check` in `lefthook.yml`, `npm run lint` in CI),
@@ -172,8 +174,8 @@ workflow, not part of this check. See `.github/workflows/ci.yml` for the actual 
 CI fails a pull request if `backend/` or `web/` aggregate test coverage drops relative to
 `main`, rather than enforcing a fixed percentage (tracked in
 [issue #25](https://github.com/DorneichI/agora/issues/25)). This is self-hosted, not
-an external service like Codecov — deliberately, since this repo's public status isn't guaranteed
-permanent and Codecov's free tier only covers public repos.
+an external service like Codecov (see [`docs/architecture.md`](docs/architecture.md#ci-coverage-ratchet)
+for why).
 
 - Each package computes a single coverage percentage per CI run (`pytest-cov`'s
   `--cov-report=json` for `backend/`, `vitest`'s `json-summary` coverage reporter for `web/`).
@@ -189,7 +191,9 @@ permanent and Codecov's free tier only covers public repos.
   breaking the ratchet for every subsequent PR.
 - **Known limitation**: this ratchets *aggregate* coverage %, not true line-by-line diff/patch
   coverage the way Codecov does — it can theoretically be gamed by adding a large well-covered
-  file in the same PR as untested new code. Accepted trade-off for avoiding an external service.
+  file in the same PR as untested new code (see
+  [`docs/architecture.md`](docs/architecture.md#ci-coverage-ratchet) for why this trade-off was
+  accepted).
 
 ### PR template check
 
@@ -243,13 +247,13 @@ re-run their full test suites.
   back to `.env.example`'s placeholders for anything the main checkout's file doesn't have either.
   Since `.env` is blocked from every AI-tool code path (Bash included — not just Read/Edit/Write),
   this command still has to be run by a human, not the agent working in that worktree.
-- A dedicated secrets manager (e.g. Doppler, Infisical, 1Password CLI) was considered instead of
-  this script and explicitly deferred — this project is small/early-stage, prod hosting isn't
-  chosen yet, and whichever host is picked will likely provide its own per-environment secret
-  store, making a separate secrets manager redundant. Revisit if the team grows or the chosen host
-  doesn't cover this well.
+- A dedicated secrets manager was considered and explicitly deferred (see
+  [`docs/architecture.md`](docs/architecture.md#secrets-management) for why). Revisit if the team
+  grows or the chosen host doesn't cover this well.
 
 ## Still undecided (do not assume — ask before implementing)
 
 - Hosting platform(s) for backend/web/mobile.
 - Mobile distribution tooling (e.g. Fastlane, Codemagic) for TestFlight/Play releases.
+- Styling approach for web (CSS Modules vs. Tailwind vs. a component library) — see
+  [`web/CLAUDE.md`](web/CLAUDE.md).

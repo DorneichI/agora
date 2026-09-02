@@ -157,3 +157,23 @@ of the row being removed.
 
   Alembic's `--autogenerate` does not reliably detect `postgresql_where` — always check generated
   migrations by hand for indexes on soft-deletable tables.
+
+## CI coverage ratchet
+
+The coverage ratchet described in root [`CLAUDE.md`](../CLAUDE.md#coverage-ratchet) is self-hosted
+rather than an external service like Codecov — deliberately, since this repo's public status isn't
+guaranteed permanent and Codecov's free tier only covers public repos. Losing free coverage
+tracking if the repo ever goes private would be a worse trade-off than the limitation below.
+
+**Accepted trade-off**: the ratchet compares *aggregate* coverage %, not true line-by-line
+diff/patch coverage the way Codecov does — it can theoretically be gamed by adding a large
+well-covered file in the same PR as untested new code. This was accepted to avoid depending on an
+external service, given this project's current stage doesn't yet need the extra precision.
+
+## Secrets management
+
+A dedicated secrets manager (e.g. Doppler, Infisical, 1Password CLI) was considered instead of the
+`.env`-based approach described in root [`CLAUDE.md`](../CLAUDE.md#secrets) and explicitly
+deferred: this project is small/early-stage, prod hosting isn't chosen yet, and whichever host is
+picked will likely provide its own per-environment secret store, making a separate secrets manager
+redundant.

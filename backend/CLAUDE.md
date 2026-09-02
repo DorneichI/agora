@@ -131,11 +131,11 @@ own package instead of adding another shared cross-cutting layer:
   (e.g. `require_league_member`), moved out of the shared `app/deps.py`.
 - `app/<domain>/router.py` -- the FastAPI router(s) for this domain, wired into `app/main.py` as
   `from app.<domain>.router import router as <domain>_router`. If this single file grows too
-  large for one resource's endpoints to stay readable together (issue #87 was the first case,
-  once `app/gameplay/router.py` reached 508 lines / 25 endpoints across 5 resources), split it
-  into an `app/<domain>/routers/` package instead: one file per resource, a shared helper module
-  for anything genuinely cross-resource, and an `app/<domain>/routers/__init__.py` that composes
-  the per-resource `APIRouter`s into one `router` -- `main.py`'s import becomes
+  large for one resource's endpoints to stay readable together (issue #87 was the first case),
+  split it into an `app/<domain>/routers/` package instead: one file per resource, a shared
+  helper module for anything genuinely cross-resource, and an
+  `app/<domain>/routers/__init__.py` that composes the per-resource `APIRouter`s into one
+  `router` -- `main.py`'s import becomes
   `from app.<domain>.routers import router as <domain>_router` (package, not module).
 
 `app/deps.py` stays reserved for genuinely generic, cross-domain concerns (currently just
@@ -150,10 +150,10 @@ does not re-export a domain package's symbols -- import them from `app.<domain>.
 (`[tool.importlinter]` in `pyproject.toml`, enforced in CI via `uv run lint-imports`) so the two
 stay independently removable; the reverse direction (gameplay depending on leagues) is allowed
 and unchecked. Both `app/leagues/` and `app/gameplay/` use the `routers/` package split described
-above -- `app/gameplay/router.py` was the first to grow too large (issue #87, at 508 lines / 25
-endpoints across 5 resources), and `app/leagues/router.py` followed the same pattern once the
-automated file-length check (issue #102) flagged it at 506 lines (leagues + invites endpoints
-split into `app/leagues/routers/leagues.py` and `app/leagues/routers/invites.py`).
+above -- `app/gameplay/router.py` was the first to need this split (issue #87), and
+`app/leagues/router.py` followed once the file-length check flagged it (issue #102) — leagues +
+invites endpoints split into `app/leagues/routers/leagues.py` and
+`app/leagues/routers/invites.py`.
 
 **A route's URL prefix does not decide which module owns it.** `GET
 /leagues/{league_id}/standings` lives in `app/gameplay/routers/standings.py`, not in
