@@ -79,17 +79,19 @@ def validate_scoring_config(config: dict, entry_count: int) -> None:
 
 
 def validate_prediction_payload(scoring_config: dict, payload: dict) -> None:
-    """Check a submitted prediction's payload against every enabled component of the
-    market's scoring_config.
+    """Check a submitted prediction's payload against every component mentioned in the
+    market's scoring_config -- whether that component is enabled or explicitly disabled.
+    Unlike validate_scoring_config, a disabled component still runs its own
+    validate_prediction_payload: that's what rejects a payload field that doesn't belong on
+    a disabled component (e.g. margin_threshold_seconds when margin is off). A component
+    absent from scoring_config entirely is skipped -- nothing was ever configured for it, so
+    there's nothing to check the payload against.
 
-    Raises ScoringPayloadError if any enabled component's requirement isn't met (e.g. a
-    missing margin_threshold_seconds when the margin component is enabled). A disabled or
-    absent component is skipped entirely -- its validate_prediction_payload never runs."""
+    Raises ScoringPayloadError if any present component's requirement isn't met."""
     for name, component in COMPONENTS.items():
         if name not in scoring_config:
             continue
-        component_config = _effective_config(scoring_config, name)
-        component.validate_prediction_payload(component_config, payload)
+        component.validate_prediction_payload(_effective_config(scoring_config, name), payload)
 
 
 def settle_market(
