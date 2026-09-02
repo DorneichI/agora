@@ -48,10 +48,14 @@ async def list_prediction_markets(
     return list((await session.execute(statement)).scalars().all())
 
 
-async def list_predictions(session: AsyncSession, market_id: int | None = None) -> list[Prediction]:
+async def list_predictions(
+    session: AsyncSession, market_id: int | None = None, user_id: int | None = None
+) -> list[Prediction]:
     statement = select(Prediction)
     if market_id is not None:
         statement = statement.where(Prediction.market_id == market_id)
+    if user_id is not None:
+        statement = statement.where(Prediction.user_id == user_id)
     return list((await session.execute(statement)).scalars().all())
 
 
