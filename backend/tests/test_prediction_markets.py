@@ -236,3 +236,98 @@ async def test_get_soft_deleted_prediction_market_returns_404(client, db_session
     )
 
     assert response.status_code == 404
+
+
+async def test_list_prediction_markets_without_token_returns_401(client):
+    response = await client.get("/prediction-markets")
+
+    assert response.status_code == 401
+
+
+async def test_list_prediction_markets_returns_all_active_markets(client, make_admin):
+    token, _admin_id = await make_admin("user_pm_lister", "pmlister@example.com", "Admin")
+    race_one = await _create_race_with_entries(client, token)
+    race_two = await _create_race_with_entries(client, token)
+    await client.post(
+        "/prediction-markets",
+        json={"race_id": race_one, "scoring_config": WINNER_FLAT_CONFIG},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    await client.post(
+        "/prediction-markets",
+        json={"race_id": race_two, "scoring_config": WINNER_FLAT_CONFIG},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    response = await client.get("/prediction-markets", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    race_ids = {market["race_id"] for market in response.json()}
+    assert {race_one, race_two} <= race_ids
+
+
+async def test_list_prediction_markets_excludes_soft_deleted(client, db_session, make_admin):
+    token, _admin_id = await make_admin(
+        "user_pm_list_softdel", "pmlistsoftdel@example.com", "Admin"
+    )
+    race_id = await _create_race_with_entries(client, token)
+    create_response = await client.post(
+        "/prediction-markets",
+        json={"race_id": race_id, "scoring_config": WINNER_FLAT_CONFIG},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    market_id = create_response.json()["id"]
+
+    market = await db_session.get(PredictionMarket, market_id)
+    await db_session.delete(market)
+    await db_session.commit()
+
+    response = await client.get("/prediction-markets", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    market_ids = {m["id"] for m in response.json()}
+    assert market_id not in market_ids
+
+
+async def test_list_prediction_markets_filters_by_race_id(client, make_admin):
+    token, _admin_id = await make_admin("user_pm_filter", "pmfilter@example.com", "Admin")
+    race_one = await _create_race_with_entries(client, token)
+    race_two = await _create_race_with_entries(client, token)
+    kept = await client.post(
+        "/prediction-markets",
+        json={"race_id": race_one, "scoring_config": WINNER_FLAT_CONFIG},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    await client.post(
+        "/prediction-markets",
+        json={"race_id": race_two, "scoring_config": WINNER_FLAT_CONFIG},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    response = await client.get(
+        f"/prediction-markets?race_id={race_one}", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert {market["race_id"] for market in body} == {race_one}
+    assert [market["id"] for market in body] == [kept.json()["id"]]
+
+
+async def test_list_prediction_markets_with_unknown_race_id_returns_empty(client, make_admin):
+    token, _admin_id = await make_admin(
+        "user_pm_filter_unknown", "pmfilterunknown@example.com", "Admin"
+    )
+    race_id = await _create_race_with_entries(client, token)
+    await client.post(
+        "/prediction-markets",
+        json={"race_id": race_id, "scoring_config": WINNER_FLAT_CONFIG},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    response = await client.get(
+        "/prediction-markets?race_id=999999", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
