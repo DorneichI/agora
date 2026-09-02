@@ -272,3 +272,149 @@ async def test_submit_prediction_to_settled_market_returns_422(
     )
 
     assert response.status_code == 422
+
+
+async def test_get_prediction_without_token_returns_401(client):
+    response = await client.get("/predictions/1")
+
+    assert response.status_code == 401
+
+
+async def test_get_own_prediction_succeeds(client, make_admin, make_user):
+    admin_token, _admin_id = await make_admin(
+        "user_pred_get_admin", "predgetadmin@example.com", "Admin"
+    )
+    race_id, team_ids = await _create_race_with_entries(client, admin_token)
+    market_id = await _create_market(client, admin_token, race_id, WINNER_FLAT_CONFIG)
+
+    user_token, user_id = await make_user("user_pred_get", "predget@example.com", "Predictor")
+    create_response = await client.post(
+        "/predictions",
+        json={"market_id": market_id, "picked_team_id": team_ids[0]},
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    prediction_id = create_response.json()["id"]
+
+    response = await client.get(
+        f"/predictions/{prediction_id}", headers={"Authorization": f"Bearer {user_token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user_id"] == user_id
+
+
+async def test_get_another_users_prediction_returns_403(client, make_admin, make_user):
+    admin_token, _admin_id = await make_admin(
+        "user_pred_403_admin", "pred403admin@example.com", "Admin"
+    )
+    race_id, team_ids = await _create_race_with_entries(client, admin_token)
+    market_id = await _create_market(client, admin_token, race_id, WINNER_FLAT_CONFIG)
+
+    owner_token, _owner_id = await make_user("user_pred_owner", "predowner@example.com", "Owner")
+    create_response = await client.post(
+        "/predictions",
+        json={"market_id": market_id, "picked_team_id": team_ids[0]},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    prediction_id = create_response.json()["id"]
+
+    other_token, _other_id = await make_user("user_pred_other", "predother@example.com", "Other")
+    response = await client.get(
+        f"/predictions/{prediction_id}", headers={"Authorization": f"Bearer {other_token}"}
+    )
+
+    assert response.status_code == 403
+
+
+async def test_admin_can_get_another_users_prediction(client, make_admin, make_user):
+    admin_token, _admin_id = await make_admin(
+        "user_pred_admin_get", "predadminget@example.com", "Admin"
+    )
+    race_id, team_ids = await _create_race_with_entries(client, admin_token)
+    market_id = await _create_market(client, admin_token, race_id, WINNER_FLAT_CONFIG)
+
+    owner_token, owner_id = await make_user("user_pred_owner2", "predowner2@example.com", "Owner")
+    create_response = await client.post(
+        "/predictions",
+        json={"market_id": market_id, "picked_team_id": team_ids[0]},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    prediction_id = create_response.json()["id"]
+
+    response = await client.get(
+        f"/predictions/{prediction_id}", headers={"Authorization": f"Bearer {admin_token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user_id"] == owner_id
+
+
+async def test_get_nonexistent_prediction_returns_404(client, make_user):
+    token, _user_id = await make_user("user_pred_404", "pred404@example.com", "Predictor")
+
+    response = await client.get("/predictions/999999", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 404
+
+
+async def test_list_predictions_only_returns_own_predictions(client, make_admin, make_user):
+    admin_token, _admin_id = await make_admin(
+        "user_pred_list_admin", "predlistadmin@example.com", "Admin"
+    )
+    race_id, team_ids = await _create_race_with_entries(client, admin_token)
+    market_id = await _create_market(client, admin_token, race_id, WINNER_FLAT_CONFIG)
+
+    user_a_token, user_a_id = await make_user("user_pred_list_a", "predlista@example.com", "A")
+    await client.post(
+        "/predictions",
+        json={"market_id": market_id, "picked_team_id": team_ids[0]},
+        headers={"Authorization": f"Bearer {user_a_token}"},
+    )
+
+    user_b_token, _user_b_id = await make_user("user_pred_list_b", "predlistb@example.com", "B")
+    await client.post(
+        "/predictions",
+        json={"market_id": market_id, "picked_team_id": team_ids[1]},
+        headers={"Authorization": f"Bearer {user_b_token}"},
+    )
+
+    response = await client.get("/predictions", headers={"Authorization": f"Bearer {user_a_token}"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["user_id"] == user_a_id
+
+
+async def test_list_predictions_filters_by_market_id(client, make_admin, make_user):
+    admin_token, _admin_id = await make_admin(
+        "user_pred_filter_admin", "predfilteradmin@example.com", "Admin"
+    )
+    race_one, team_ids_one = await _create_race_with_entries(client, admin_token)
+    market_one = await _create_market(client, admin_token, race_one, WINNER_FLAT_CONFIG)
+    race_two, team_ids_two = await _create_race_with_entries(client, admin_token)
+    market_two = await _create_market(client, admin_token, race_two, WINNER_FLAT_CONFIG)
+
+    user_token, _user_id = await make_user(
+        "user_pred_filter", "predfilter@example.com", "Predictor"
+    )
+    await client.post(
+        "/predictions",
+        json={"market_id": market_one, "picked_team_id": team_ids_one[0]},
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+    await client.post(
+        "/predictions",
+        json={"market_id": market_two, "picked_team_id": team_ids_two[0]},
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+
+    response = await client.get(
+        f"/predictions?market_id={market_one}",
+        headers={"Authorization": f"Bearer {user_token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["market_id"] == market_one
