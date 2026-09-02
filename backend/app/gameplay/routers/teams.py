@@ -21,7 +21,7 @@ class TeamCreate(SQLModel):
     image_url: str | None = None
 
 
-@router.post("/teams", response_model=TeamRead)
+@router.post("/teams", response_model=TeamRead, status_code=status.HTTP_201_CREATED)
 async def create_team(
     body: TeamCreate,
     user: User = Depends(require_admin),

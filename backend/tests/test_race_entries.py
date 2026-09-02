@@ -84,7 +84,7 @@ async def test_create_race_entry_as_admin_sets_created_by_and_defaults(
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     body = response.json()
     assert body["race_id"] == race_id
     assert body["team_id"] == team_id
@@ -550,7 +550,7 @@ async def test_delete_race_entry_allows_recreating_same_race_and_team(client, ma
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     assert response.json()["id"] != entry_id
 
 

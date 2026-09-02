@@ -35,7 +35,7 @@ async def test_create_team_as_admin_sets_created_by(
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     body = response.json()
     assert body["name"] == "Crimson"
     assert body["school"] == "Harvard"

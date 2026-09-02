@@ -39,7 +39,7 @@ class LeagueSettingsUpdate(SQLModel):
     settings_policy: SettingsPolicy | None = None
 
 
-@router.post("/leagues", response_model=LeagueRead)
+@router.post("/leagues", response_model=LeagueRead, status_code=status.HTTP_201_CREATED)
 async def create_league(
     body: LeagueCreate,
     user: User = Depends(require_username),

@@ -35,7 +35,7 @@ class RaceEntryCreate(SQLModel):
     status: RaceEntryStatus = "dns"
 
 
-@router.post("/race-entries", response_model=RaceEntryRead)
+@router.post("/race-entries", response_model=RaceEntryRead, status_code=status.HTTP_201_CREATED)
 async def create_race_entry(
     body: RaceEntryCreate,
     user: User = Depends(require_admin),

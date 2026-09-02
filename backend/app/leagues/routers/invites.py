@@ -48,7 +48,11 @@ def _is_invite_code_collision(exc: IntegrityError) -> bool:
     )
 
 
-@router.post("/leagues/{league_id}/invites", response_model=LeagueInviteRead)
+@router.post(
+    "/leagues/{league_id}/invites",
+    response_model=LeagueInviteRead,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_invite(
     league_id: int,
     body: InviteCreate,
