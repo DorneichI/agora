@@ -118,7 +118,7 @@ async def test_create_prediction_market_as_admin_with_eligible_config_returns_20
     assert market.created_by == admin_id
 
 
-async def test_create_second_prediction_market_for_same_race_returns_422(client, make_admin):
+async def test_create_second_prediction_market_for_same_race_returns_409(client, make_admin):
     token, _admin_id = await make_admin("user_pm_dup", "pmdup@example.com", "Admin")
     race_id = await _create_race_with_entries(client, token)
 
@@ -135,7 +135,7 @@ async def test_create_second_prediction_market_for_same_race_returns_422(client,
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    assert second.status_code == 422
+    assert second.status_code == 409
     assert second.json()["detail"] == "race_id already has an active PredictionMarket"
 
 
