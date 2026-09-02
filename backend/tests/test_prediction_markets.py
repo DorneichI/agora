@@ -137,3 +137,33 @@ async def test_create_second_prediction_market_for_same_race_returns_422(client,
 
     assert second.status_code == 422
     assert second.json()["detail"] == "race_id already has an active PredictionMarket"
+
+
+async def test_create_prediction_market_with_nonexistent_race_id_returns_422(client, make_admin):
+    token, _admin_id = await make_admin("user_pm_badrace", "pmbadrace@example.com", "Admin")
+
+    response = await client.post(
+        "/prediction-markets",
+        json={"race_id": 999999, "scoring_config": WINNER_FLAT_CONFIG},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422
+
+
+async def test_create_prediction_market_with_ineligible_config_returns_422(client, make_admin):
+    """Margin requires >= 2 entries (base ScoringComponent.is_eligible); a 1-entry race can't
+    support it."""
+    token, _admin_id = await make_admin("user_pm_ineligible", "pmineligible@example.com", "Admin")
+    race_id = await _create_race_with_entries(client, token, entry_count=1)
+
+    response = await client.post(
+        "/prediction-markets",
+        json={
+            "race_id": race_id,
+            "scoring_config": {"margin": {"enabled": True, "mode": "pool", "pool_points": 10}},
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 422
