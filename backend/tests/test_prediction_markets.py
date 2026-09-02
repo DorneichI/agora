@@ -116,3 +116,24 @@ async def test_create_prediction_market_as_admin_with_eligible_config_returns_20
 
     market = await db_session.get(PredictionMarket, body["id"])
     assert market.created_by == admin_id
+
+
+async def test_create_second_prediction_market_for_same_race_returns_422(client, make_admin):
+    token, _admin_id = await make_admin("user_pm_dup", "pmdup@example.com", "Admin")
+    race_id = await _create_race_with_entries(client, token)
+
+    first = await client.post(
+        "/prediction-markets",
+        json={"race_id": race_id, "scoring_config": WINNER_FLAT_CONFIG},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert first.status_code == 201
+
+    second = await client.post(
+        "/prediction-markets",
+        json={"race_id": race_id, "scoring_config": WINNER_FLAT_CONFIG},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert second.status_code == 422
+    assert second.json()["detail"] == "race_id already has an active PredictionMarket"

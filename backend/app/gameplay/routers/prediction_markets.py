@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import SQLModel, select
+from sqlmodel import SQLModel
 
 from app.auth.deps import require_username
 from app.crud_helpers import get_or_404, validate_fk_exists
@@ -19,10 +20,8 @@ async def _validate_race_id(race_id: int, session: AsyncSession) -> None:
 
 
 async def _validate_no_existing_market(race_id: int, session: AsyncSession) -> None:
-    existing = (
-        await session.execute(select(PredictionMarket).where(PredictionMarket.race_id == race_id))
-    ).scalar_one_or_none()
-    if existing is not None:
+    existing = await repository.list_prediction_markets(session, race_id=race_id)
+    if existing:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="race_id already has an active PredictionMarket",
@@ -49,6 +48,7 @@ class PredictionMarketCreate(SQLModel):
 @router.post(
     "/prediction-markets",
     response_model=PredictionMarketRead,
+    # deliberate: issue #96 requires 201 here, unlike every other create route's implicit 200
     status_code=status.HTTP_201_CREATED,
 )
 async def create_prediction_market(
@@ -66,7 +66,14 @@ async def create_prediction_market(
         created_by=user.id,
     )
     session.add(market)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="race_id already has an active PredictionMarket",
+        ) from exc
     return market
 
 
