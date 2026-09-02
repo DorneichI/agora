@@ -988,7 +988,7 @@ async def test_kick_admin_by_owner_succeeds(client, make_user):
     assert response.status_code == 204
 
 
-async def test_kick_owner_returns_403(client, make_user):
+async def test_kick_owner_returns_409(client, make_user):
     owner_token, _owner_id = await make_user(
         "user_kick_owner_403", "kickowner403@example.com", "Owner"
     )
@@ -1017,7 +1017,7 @@ async def test_kick_owner_returns_403(client, make_user):
         headers={"Authorization": f"Bearer {second_admin_token}"},
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 409
 
 
 async def test_self_kick_returns_409(client, make_user):
@@ -1631,7 +1631,7 @@ async def test_join_public_league_succeeds(client, make_user):
     assert response.status_code == 204
 
 
-async def test_join_private_league_returns_403(client, make_user):
+async def test_join_private_league_returns_409(client, make_user):
     owner_token, _owner_id = await make_user(
         "user_join_private_owner", "joinprivateowner@example.com", "Owner"
     )
@@ -1649,7 +1649,7 @@ async def test_join_private_league_returns_403(client, make_user):
         f"/leagues/{league_id}/join", headers={"Authorization": f"Bearer {joiner_token}"}
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 409
     assert response.json()["detail"] == "This league is not public"
 
 

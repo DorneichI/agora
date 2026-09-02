@@ -136,7 +136,7 @@ async def join_league(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="League not found")
     if league.visibility != "public":
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="This league is not public"
+            status_code=status.HTTP_409_CONFLICT, detail="This league is not public"
         )
 
     membership = await get_membership_including_deleted(session, league_id, user.id)
@@ -246,7 +246,7 @@ async def kick_member(
 
     if user_id == league.owner_id:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="The league owner cannot be kicked"
+            status_code=status.HTTP_409_CONFLICT, detail="The league owner cannot be kicked"
         )
     if membership.role == "admin" and user.id != league.owner_id:
         raise HTTPException(
