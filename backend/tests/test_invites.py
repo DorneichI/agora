@@ -965,7 +965,7 @@ async def test_revoke_by_plain_member_who_is_not_creator_returns_403(client, mak
     assert response.status_code == 403
 
 
-async def test_revoke_already_revoked_invite_returns_404(client, make_user):
+async def test_revoke_already_revoked_invite_returns_410(client, make_user):
     owner_token, _owner_id = await make_user(
         "user_revoke_owner_5", "revokeowner5@example.com", "Owner"
     )
@@ -987,10 +987,10 @@ async def test_revoke_already_revoked_invite_returns_404(client, make_user):
     second = await client.delete(
         f"/invites/{code}", headers={"Authorization": f"Bearer {owner_token}"}
     )
-    assert second.status_code == 404
+    assert second.status_code == 410
 
 
-async def test_revoke_already_redeemed_invite_returns_404(client, make_user):
+async def test_revoke_already_redeemed_invite_returns_410(client, make_user):
     owner_token, _owner_id = await make_user(
         "user_revoke_owner_6", "revokeowner6@example.com", "Owner"
     )
@@ -1015,10 +1015,10 @@ async def test_revoke_already_redeemed_invite_returns_404(client, make_user):
         f"/invites/{code}", headers={"Authorization": f"Bearer {owner_token}"}
     )
 
-    assert response.status_code == 404
+    assert response.status_code == 410
 
 
-async def test_revoke_expired_invite_returns_404(client, make_user, db_session):
+async def test_revoke_expired_invite_returns_410(client, make_user, db_session):
     owner_token, _owner_id = await make_user(
         "user_revoke_owner_7", "revokeowner7@example.com", "Owner"
     )
@@ -1043,4 +1043,4 @@ async def test_revoke_expired_invite_returns_404(client, make_user, db_session):
         f"/invites/{code}", headers={"Authorization": f"Bearer {owner_token}"}
     )
 
-    assert response.status_code == 404
+    assert response.status_code == 410

@@ -214,7 +214,9 @@ async def revoke_invite(
 
     now = datetime.now(UTC)
     if invite.redeemed_at is not None or invite.revoked_at is not None or now > invite.expires_at:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nothing left to revoke")
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE, detail="This invite is no longer valid"
+        )
 
     invite.revoked_at = now
     session.add(invite)
