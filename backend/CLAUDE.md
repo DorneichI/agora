@@ -132,9 +132,10 @@ own package instead of adding another shared cross-cutting layer:
 - `app/<domain>/router.py` -- the FastAPI router(s) for this domain, wired into `app/main.py` as
   `from app.<domain>.router import router as <domain>_router`. If this single file grows too
   large for one resource's endpoints to stay readable together (issue #87 was the first case),
-  split it into an `app/<domain>/routers/` package instead: one file per resource, a shared helper module
-  for anything genuinely cross-resource, and an `app/<domain>/routers/__init__.py` that composes
-  the per-resource `APIRouter`s into one `router` -- `main.py`'s import becomes
+  split it into an `app/<domain>/routers/` package instead: one file per resource, a shared
+  helper module for anything genuinely cross-resource, and an
+  `app/<domain>/routers/__init__.py` that composes the per-resource `APIRouter`s into one
+  `router` -- `main.py`'s import becomes
   `from app.<domain>.routers import router as <domain>_router` (package, not module).
 
 `app/deps.py` stays reserved for genuinely generic, cross-domain concerns (currently just
