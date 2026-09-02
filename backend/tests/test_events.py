@@ -62,7 +62,7 @@ async def test_create_event_as_admin_sets_created_by(client, make_admin, db_sess
         "/events", json=EVENT_PAYLOAD, headers={"Authorization": f"Bearer {token}"}
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     body = response.json()
     assert body["name"] == "Head of the Charles"
     assert body["description"] == "Fall regatta on the Charles River"
@@ -106,7 +106,7 @@ async def test_create_event_with_venue_id_succeeds(client, make_admin):
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     assert response.json()["venue_id"] == venue_id
 
 

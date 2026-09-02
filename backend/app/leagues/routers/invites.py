@@ -48,7 +48,11 @@ def _is_invite_code_collision(exc: IntegrityError) -> bool:
     )
 
 
-@router.post("/leagues/{league_id}/invites", response_model=LeagueInviteRead)
+@router.post(
+    "/leagues/{league_id}/invites",
+    response_model=LeagueInviteRead,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_invite(
     league_id: int,
     body: InviteCreate,
@@ -214,7 +218,9 @@ async def revoke_invite(
 
     now = datetime.now(UTC)
     if invite.redeemed_at is not None or invite.revoked_at is not None or now > invite.expires_at:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nothing left to revoke")
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE, detail="This invite is no longer valid"
+        )
 
     invite.revoked_at = now
     session.add(invite)

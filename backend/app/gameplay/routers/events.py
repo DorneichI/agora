@@ -40,7 +40,7 @@ class EventCreate(SQLModel):
     image_url: str | None = None
 
 
-@router.post("/events", response_model=EventRead)
+@router.post("/events", response_model=EventRead, status_code=status.HTTP_201_CREATED)
 async def create_event(
     body: EventCreate,
     user: User = Depends(require_admin),

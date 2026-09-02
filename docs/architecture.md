@@ -63,6 +63,39 @@ they allowed to do." The two are deliberately kept separate and simple:
   which only promotes an already-provisioned user (one who's logged in via Clerk at least once) —
   it never creates a `User` row itself, so it can't be used to conjure an account out of thin air.
 
+## HTTP status codes
+
+Issue [#111](https://github.com/DorneichI/agora/issues/111) audited every `HTTPException`/
+`status_code=` call site in `backend/app` and settled one canonical code per recurring
+*situation*, researched against RFC 9110 rather than just codifying whatever was already there.
+New endpoints should map their error/success cases onto these buckets instead of re-deciding from
+scratch:
+
+| Situation | Code | Why |
+|---|---|---|
+| No/invalid/missing credentials | `401` | RFC 9110 §15.5.2 — identity itself can't be established |
+| Auth provider (Clerk) unreachable | `503` | Not a client error — transient upstream outage, not "your token is bad" |
+| Authenticated, but lacks the role/membership/ownership *this caller* needs for the action, including incomplete-profile gates (e.g. a required username not yet set) | `403` | RFC 9110 §15.5.4 — identity known, server refuses to authorize this specific caller. See `## Authorization` above for the role model itself. |
+| A business rule blocks this action for *anyone*, independent of who's asking (e.g. a league's owner can't be kicked; a private league can't be self-joined) | `409` | Not an authorization failure — the target resource's own state conflicts with the action, regardless of caller identity. This is the line that separates it from the `403` bucket above. |
+| Resource exists, but its current (still-reversible) state conflicts with this action (a settled `PredictionMarket` rejecting a new prediction; a membership role toggle that's a no-op; a delete blocked because another active row still references it) | `409` | RFC 9110 §15.5.10 — general conflict with the current state of the target resource |
+| Resource is permanently gone (an invite that's expired, been revoked, or already been redeemed) | `410` | RFC 9110 §15.5.11 — Gone is specifically for access that used to be valid and is now permanently over, not just temporarily blocked |
+| Duplicate/already-taken resource on creation | `409` | Same RFC 9110 §15.5.10 conflict bucket — a uniqueness constraint is a state conflict |
+| Resource doesn't exist (a path param, or a lookup like a username) | `404` | RFC 9110 §15.5.5 |
+| Well-formed request body fails a semantic/business rule, including referencing another entity that doesn't exist | `422` | Not in RFC 9110 itself — this follows FastAPI's and most REST style guides' convention of 422 for syntactically valid but semantically invalid request content, as distinct from `409`'s state conflicts and `404`'s missing resources |
+| Successful action, no body to return | `204` | RFC 9110 §15.3.5 |
+| Successful resource creation | `201` | RFC 9110 §15.3.2 — the default for any POST that creates a new addressable resource. An endpoint that both creates and updates depending on request-time state (e.g. `POST /predictions`) sets this conditionally via an injected `Response` param rather than the route decorator's fixed `status_code=`. |
+
+Endpoints that mutate an *existing* resource without creating a new one (role toggles like
+promoting/demoting a league admin, transferring league ownership, setting a user's username) stay
+`200`, even though some use `POST` rather than `PATCH` — `201` is reserved for actual creation.
+Endpoints that create a resource but intentionally return no body (`join`/`leave`/`redeem`/
+`revoke`) stay `204` rather than `201`, since `201`'s implied "here's what got created" doesn't
+fit a route that returns nothing.
+
+A `500` for a genuine server-side failure (e.g. exhausting retries on a collision-prone random
+value) isn't in this table — it's not a situation to replicate elsewhere, just let it propagate
+and get logged.
+
 ## API contract between backend and clients
 
 FastAPI auto-generates an OpenAPI schema. Both clients generate code from that schema rather than

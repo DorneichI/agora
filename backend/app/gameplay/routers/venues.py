@@ -20,7 +20,7 @@ class VenueCreate(SQLModel):
     image_url: str | None = None
 
 
-@router.post("/venues", response_model=VenueRead)
+@router.post("/venues", response_model=VenueRead, status_code=status.HTTP_201_CREATED)
 async def create_venue(
     body: VenueCreate,
     user: User = Depends(require_admin),

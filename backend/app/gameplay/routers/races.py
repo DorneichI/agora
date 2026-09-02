@@ -26,7 +26,7 @@ class RaceCreate(SQLModel):
     round: str | None = None
 
 
-@router.post("/races", response_model=RaceRead)
+@router.post("/races", response_model=RaceRead, status_code=status.HTTP_201_CREATED)
 async def create_race(
     body: RaceCreate,
     user: User = Depends(require_admin),

@@ -38,7 +38,7 @@ async def _validate_no_existing_market(race_id: int, session: AsyncSession) -> N
     existing = await repository.list_prediction_markets(session, race_id=race_id)
     if existing:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_409_CONFLICT,
             detail="race_id already has an active PredictionMarket",
         )
 
@@ -63,7 +63,6 @@ class PredictionMarketCreate(SQLModel):
 @router.post(
     "/prediction-markets",
     response_model=PredictionMarketRead,
-    # deliberate: issue #96 requires 201 here, unlike every other create route's implicit 200
     status_code=status.HTTP_201_CREATED,
 )
 async def create_prediction_market(
@@ -86,7 +85,7 @@ async def create_prediction_market(
     except IntegrityError as exc:
         await session.rollback()
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_409_CONFLICT,
             detail="race_id already has an active PredictionMarket",
         ) from exc
     return market

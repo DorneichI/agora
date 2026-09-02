@@ -57,7 +57,7 @@ async def _create_league(client, token, name):
     response = await client.post(
         "/leagues", json={"name": name}, headers={"Authorization": f"Bearer {token}"}
     )
-    assert response.status_code == 200
+    assert response.status_code == 201
     return response.json()["id"]
 
 
@@ -104,7 +104,7 @@ async def test_create_invite_public_league_owner_only_default_succeeds_for_owner
         headers={"Authorization": f"Bearer {owner_token}"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     body = response.json()
     assert body["league_id"] == league_id
     assert body["created_by"] == owner_id
@@ -152,7 +152,7 @@ async def test_create_invite_admins_only_policy_allows_admin(client, make_user):
         headers={"Authorization": f"Bearer {admin_token}"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     assert response.json()["created_by"] == admin_id
 
 
@@ -193,7 +193,7 @@ async def test_create_invite_anyone_policy_allows_plain_member(client, make_user
         headers={"Authorization": f"Bearer {member_token}"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     assert response.json()["created_by"] == member_id
 
 
@@ -255,7 +255,7 @@ async def test_create_invite_private_league_valid_target_succeeds(client, make_u
         headers={"Authorization": f"Bearer {owner_token}"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     body = response.json()
     assert body["target_user_id"] == target_id
 
@@ -293,7 +293,7 @@ async def test_create_invite_private_league_matches_target_username_case_insensi
         headers={"Authorization": f"Bearer {owner_token}"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     assert response.json()["target_user_id"] == target_id
 
 
@@ -328,7 +328,7 @@ async def test_create_invite_retries_on_code_collision(client, make_user, db_ses
         headers={"Authorization": f"Bearer {owner_token}"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     body = response.json()
     assert body["code"] == fresh_code
     assert body["code"] != colliding_code
@@ -965,7 +965,7 @@ async def test_revoke_by_plain_member_who_is_not_creator_returns_403(client, mak
     assert response.status_code == 403
 
 
-async def test_revoke_already_revoked_invite_returns_404(client, make_user):
+async def test_revoke_already_revoked_invite_returns_410(client, make_user):
     owner_token, _owner_id = await make_user(
         "user_revoke_owner_5", "revokeowner5@example.com", "Owner"
     )
@@ -987,10 +987,10 @@ async def test_revoke_already_revoked_invite_returns_404(client, make_user):
     second = await client.delete(
         f"/invites/{code}", headers={"Authorization": f"Bearer {owner_token}"}
     )
-    assert second.status_code == 404
+    assert second.status_code == 410
 
 
-async def test_revoke_already_redeemed_invite_returns_404(client, make_user):
+async def test_revoke_already_redeemed_invite_returns_410(client, make_user):
     owner_token, _owner_id = await make_user(
         "user_revoke_owner_6", "revokeowner6@example.com", "Owner"
     )
@@ -1015,10 +1015,10 @@ async def test_revoke_already_redeemed_invite_returns_404(client, make_user):
         f"/invites/{code}", headers={"Authorization": f"Bearer {owner_token}"}
     )
 
-    assert response.status_code == 404
+    assert response.status_code == 410
 
 
-async def test_revoke_expired_invite_returns_404(client, make_user, db_session):
+async def test_revoke_expired_invite_returns_410(client, make_user, db_session):
     owner_token, _owner_id = await make_user(
         "user_revoke_owner_7", "revokeowner7@example.com", "Owner"
     )
@@ -1043,4 +1043,4 @@ async def test_revoke_expired_invite_returns_404(client, make_user, db_session):
         f"/invites/{code}", headers={"Authorization": f"Bearer {owner_token}"}
     )
 
-    assert response.status_code == 404
+    assert response.status_code == 410

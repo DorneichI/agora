@@ -63,7 +63,7 @@ async def test_create_race_as_admin_sets_created_by(client, make_admin, db_sessi
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
     body = response.json()
     assert body["event_id"] == event_id
     assert body["name"] == "Varsity 8+ Heat 1"
