@@ -55,6 +55,7 @@ uv run ruff format --check .  # format check (drop --check to auto-format)
 uv run lint-imports         # import boundary contract (app.leagues must not import app.gameplay)
 uv run alembic upgrade head   # apply migrations
 uv run alembic revision --autogenerate -m "..."  # generate a migration from model changes
+uv run python -m scripts.new_domain <name>  # scaffold a new app/<name>/ domain package
 ```
 
 `DATABASE_URL` (see root `.env.example`) is read by both the app and Alembic's `env.py` — the
@@ -137,6 +138,11 @@ own package instead of adding another shared cross-cutting layer:
   `app/<domain>/routers/__init__.py` that composes the per-resource `APIRouter`s into one
   `router` -- `main.py`'s import becomes
   `from app.<domain>.routers import router as <domain>_router` (package, not module).
+
+`scripts/new_domain.py` (`uv run python -m scripts.new_domain <name>`) generates all four
+files' skeletons in one step. It deliberately does not wire `app/main.py` or add an
+import-linter contract for the new domain -- both need a judgment call about what the domain
+should be allowed to import -- but prints a reminder for each so neither gets forgotten.
 
 `app/deps.py` stays reserved for genuinely generic, cross-domain concerns (currently just
 `require_admin` — identity verification itself (`get_current_user`, `require_username`) lives in
