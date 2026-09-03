@@ -152,10 +152,10 @@ Both `backend/` and `web/` source files are capped at 400 lines, hard-enforced i
   backend-specific in principle, but only backend currently needs it.
 - **Test files are exempt** (backend's `tests/`, web's `*.test.ts(x)` and `e2e/`): a long test
   file is usually many independent cases, not the mixed-responsibilities problem this check
-  targets, and several existing test files (e.g. `tests/test_leagues.py`) are already far past any
-  reasonable single threshold — splitting them wouldn't add clarity the way it does for source
-  files. Revisit if test-file bloat becomes an actual problem later, the same "revisit if it comes
-  up" pattern used elsewhere in this file (e.g. the secrets-manager decision below).
+  targets, and several existing test files (e.g. `tests/leagues/test_leagues.py`) are already far
+  past any reasonable single threshold — splitting them wouldn't add clarity the way it does for
+  source files. Revisit if test-file bloat becomes an actual problem later, the same "revisit if
+  it comes up" pattern used elsewhere in this file (e.g. the secrets-manager decision below).
 - `pre-commit`'s version only checks staged files (so it only ever flags the file you're actively
   editing); `pre-push` and CI scan the full tracked tree via `git ls-files`, so a file that crossed
   the limit without ever being staged under this check (e.g. a merge) still gets caught before
