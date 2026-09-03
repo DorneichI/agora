@@ -48,10 +48,12 @@ select = ["E", "F", "I", "UP"]
 root_package = "app"
 
 [[tool.importlinter.contracts]]
-name = "Leagues must not depend on gameplay"
-type = "forbidden"
-source_modules = ["app.leagues"]
-forbidden_modules = ["app.gameplay"]
+name = "Leagues and gameplay are mutually independent"
+type = "independence"
+modules = [
+    "app.leagues",
+    "app.gameplay",
+]
 
 [[tool.importlinter.contracts]]
 name = "Foundation modules must not depend on domain packages"
@@ -68,4 +70,5 @@ source_modules = [
 forbidden_modules = [
     "app.leagues",
     "app.gameplay",
+    "app.standings",
 ]
