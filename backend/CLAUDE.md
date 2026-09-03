@@ -127,7 +127,11 @@ own package instead of adding another shared cross-cutting layer:
   what used to live in `app/models/<name>.py`.
 - `app/<domain>/repository.py` -- plain async functions wrapping every
   `session.execute(select(...))` query this domain's routers/deps need, so no other module has
-  to write a raw query against this domain's tables.
+  to write a raw query against this domain's tables. The one deliberate exception:
+  `app/crud_helpers.py`'s shared `get_or_404`/`validate_fk_exists`/`assert_not_referenced`
+  helpers, which every domain's routers use, query directly and sit outside this per-domain rule --
+  they're generic across all domains, not specific to one, which is why they live in shared
+  `app/crud_helpers.py` rather than any single domain's `repository.py`.
 - `app/<domain>/deps.py` -- any `require_*`/`get_*` FastAPI dependency specific to this domain
   (e.g. `require_league_member`), moved out of the shared `app/deps.py`.
 - `app/<domain>/router.py` -- the FastAPI router(s) for this domain, wired into `app/main.py` as
