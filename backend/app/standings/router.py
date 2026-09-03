@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import require_username
 from app.db import get_session
-from app.gameplay import repository
+from app.gameplay.repository import sum_settled_points_by_user
 from app.leagues.deps import require_league_member
 from app.leagues.models import League
 from app.leagues.repository import list_active_members
@@ -49,9 +49,7 @@ async def list_league_standings(
     have no predictions yet.
     """
     members = await list_active_members(session, league.id)
-    totals = await repository.sum_settled_points_by_user(
-        session, [user.id for _membership, user in members]
-    )
+    totals = await sum_settled_points_by_user(session, [user.id for _membership, user in members])
 
     standings = [
         LeagueStandingRead(
