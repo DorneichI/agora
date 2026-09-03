@@ -10,12 +10,17 @@ documented convention -- found while auditing the project's structure.
 import ast
 import importlib
 import inspect
+import re
 from pathlib import Path
 
 import pytest
 from sqlmodel import SQLModel
 
+from app.main import app
+
 APP_DIR = Path(__file__).resolve().parent.parent / "app"
+
+_KEBAB_SEGMENT = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 
 
 def _domains_with_repository() -> list[Path]:
@@ -90,4 +95,19 @@ def test_every_table_model_has_a_read_pair(module_path: str) -> None:
     assert not missing, (
         f"{module_path}: table model(s) {missing} have no matching *Read schema -- see "
         f"backend/CLAUDE.md's 'Response schemas' convention."
+    )
+
+
+def test_routes_use_kebab_case_paths() -> None:
+    violations = []
+    for path in app.openapi()["paths"]:
+        for segment in path.split("/"):
+            if not segment or segment.startswith("{"):
+                continue
+            if not _KEBAB_SEGMENT.fullmatch(segment):
+                violations.append(path)
+                break
+    assert not violations, (
+        f"Route path(s) not kebab-case: {violations} -- see backend/CLAUDE.md's 'Route "
+        f"naming for multi-word resources' convention."
     )
