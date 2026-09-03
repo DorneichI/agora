@@ -11,9 +11,9 @@ MARGIN_FLAT_GLOBAL = {"enabled": True, "mode": "flat", "flat_base": 5.0, "m_sour
 async def _seed_market(db_session, creator_id, scoring_config):
     """A race with two finished RaceEntry rows (team_b wins by 4.0s over team_a) plus a
     PredictionMarket for that race with the given scoring_config. Mirrors
-    tests/test_scoring_settle.py's ENTRIES fixture (team 20 wins at 396.0 vs team 10 at
-    400.0, margin 4.0s) so the endpoint can be checked against the same already-tested
-    point values."""
+    tests/gameplay/scoring/test_scoring_settle.py's ENTRIES fixture (team 20 wins at
+    396.0 vs team 10 at 400.0, margin 4.0s) so the endpoint can be checked against the
+    same already-tested point values."""
     team_a = Team(name="Crimson", school="Harvard", mascot="Crimson", created_by=creator_id)
     team_b = Team(name="Bulldogs", school="Yale", mascot="Bulldogs", created_by=creator_id)
     event = Event(
