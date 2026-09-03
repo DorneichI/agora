@@ -145,6 +145,12 @@ own package instead of adding another shared cross-cutting layer:
 does not re-export a domain package's symbols -- import them from `app.<domain>.models` directly
 (no backwards-compat shim; see root `CLAUDE.md`'s rule against re-exporting types).
 
+This "foundation stays domain-agnostic" rule is enforced, not just documented: an import-linter
+`forbidden` contract (`pyproject.toml`) blocks `app.auth`, `app.deps`, `app.routers`, `app.db`,
+`app.crud_helpers`, `app.soft_delete`, and `app.models` from importing any domain package. If a
+piece of shared infrastructure ever needs something domain-specific, that's a sign the logic
+belongs in the domain's own `deps.py`/`repository.py` instead of being added to the shared layer.
+
 `app/leagues/` and `app/gameplay/` are both built this way (issues #63 and #64). The
 `app.leagues` -> `app.gameplay` import direction is forbidden by an `import-linter` contract
 (`[tool.importlinter]` in `pyproject.toml`, enforced in CI via `uv run lint-imports`) so the two

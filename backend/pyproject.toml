@@ -52,3 +52,20 @@ name = "Leagues must not depend on gameplay"
 type = "forbidden"
 source_modules = ["app.leagues"]
 forbidden_modules = ["app.gameplay"]
+
+[[tool.importlinter.contracts]]
+name = "Foundation modules must not depend on domain packages"
+type = "forbidden"
+source_modules = [
+    "app.auth",
+    "app.deps",
+    "app.routers",
+    "app.db",
+    "app.crud_helpers",
+    "app.soft_delete",
+    "app.models",
+]
+forbidden_modules = [
+    "app.leagues",
+    "app.gameplay",
+]
