@@ -5,7 +5,7 @@ settlement (issue #98) also lives there."""
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import SQLModel, select
+from sqlmodel import SQLModel
 
 from app.auth.deps import require_username
 from app.crud_helpers import get_or_404
@@ -19,9 +19,7 @@ router = APIRouter()
 
 
 async def _get_open_market(market_id: int, session: AsyncSession) -> PredictionMarket:
-    market = (
-        await session.execute(select(PredictionMarket).where(PredictionMarket.id == market_id))
-    ).scalar_one_or_none()
+    market = await repository.get_prediction_market_by_id(session, market_id)
     if market is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -74,13 +72,7 @@ async def create_or_update_prediction(
     await _validate_picked_team_id(body.picked_team_id, market.race_id, session)
     _validate_payload(market, body.margin_threshold_seconds)
 
-    existing = (
-        await session.execute(
-            select(Prediction).where(
-                Prediction.market_id == body.market_id, Prediction.user_id == user.id
-            )
-        )
-    ).scalar_one_or_none()
+    existing = await repository.get_prediction_by_market_and_user(session, body.market_id, user.id)
 
     if existing is not None:
         existing.picked_team_id = body.picked_team_id
