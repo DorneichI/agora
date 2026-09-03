@@ -23,12 +23,16 @@ APP_DIR = Path(__file__).resolve().parent.parent / "app"
 _KEBAB_SEGMENT = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 
 
-def _domains_with_repository() -> list[Path]:
-    """Every app/<domain>/ package that owns a repository.py. Per backend/CLAUDE.md's
-    "Domain modules" section, once a package has its own repository.py, that's the one
-    place allowed to hold a raw query against this domain's tables -- so its router(s)
-    must go through it instead of querying directly."""
-    return sorted((p.parent for p in APP_DIR.glob("*/repository.py")), key=lambda p: p.name)
+def _domain_dirs_with_routers() -> list[Path]:
+    """Every app/<domain>/ package with a router.py file or a routers/ subpackage. This
+    is broader than "owns a repository.py" -- app.standings has no repository.py of its
+    own (it queries via app.leagues's and app.gameplay's), but the rule this scan
+    enforces ("a router must never call .execute() directly") applies to it just the
+    same. This naturally excludes app/routers/ (the shared health.py/users.py module):
+    it's one level shallower than these two glob patterns require."""
+    single_router_dirs = {p.parent for p in APP_DIR.glob("*/router.py")}
+    routers_pkg_dirs = {p.parent for p in APP_DIR.glob("*/routers") if p.is_dir()}
+    return sorted(single_router_dirs | routers_pkg_dirs, key=lambda p: p.name)
 
 
 def _router_files_for_domain(domain_dir: Path) -> list[Path]:
@@ -58,7 +62,7 @@ def _raw_execute_call_lines(file_path: Path) -> list[int]:
     ]
 
 
-@pytest.mark.parametrize("domain_dir", _domains_with_repository(), ids=lambda p: p.name)
+@pytest.mark.parametrize("domain_dir", _domain_dirs_with_routers(), ids=lambda p: p.name)
 def test_domain_routers_never_query_directly(domain_dir: Path) -> None:
     violations = {
         str(router_file.relative_to(APP_DIR.parent)): lines
@@ -66,10 +70,23 @@ def test_domain_routers_never_query_directly(domain_dir: Path) -> None:
         if (lines := _raw_execute_call_lines(router_file))
     }
     assert not violations, (
-        f"Router file(s) call .execute(...) directly instead of going through "
-        f"app/{domain_dir.name}/repository.py: {violations}. Move the query into "
-        f"repository.py and call that function from the router instead -- see "
-        f"backend/CLAUDE.md's 'Domain modules' section."
+        f"Router file(s) in app/{domain_dir.name}/ call .execute(...) directly: "
+        f"{violations}. Route the query through a domain's repository.py instead -- "
+        f"this package's own if it has one, or the relevant domain's if this package "
+        f"is a cross-domain bridge like app.standings -- see backend/CLAUDE.md's "
+        f"'Domain modules' section."
+    )
+
+
+def test_standings_is_covered_by_the_router_boundary_scan() -> None:
+    """Regression guard for issue #129's gap #2: app.standings has no repository.py of
+    its own, so the discovery function must not rely on repository.py's existence to
+    find it."""
+    domain_dirs = _domain_dirs_with_routers()
+    assert (APP_DIR / "standings") in domain_dirs, (
+        "app/standings/ must be discovered by the repository-boundary scan even though "
+        "it has no repository.py of its own -- see backend/CLAUDE.md's 'Domain "
+        "modules' section on cross-domain composition."
     )
 
 
