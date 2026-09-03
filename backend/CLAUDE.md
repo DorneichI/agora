@@ -52,7 +52,7 @@ Run from inside `backend/` (locally with `uv`, or via `docker compose exec backe
 uv run pytest              # tests
 uv run ruff check .        # lint
 uv run ruff format --check .  # format check (drop --check to auto-format)
-uv run lint-imports         # import boundary contract (app.leagues must not import app.gameplay)
+uv run lint-imports         # import boundary contracts (see "Domain modules" below)
 uv run alembic upgrade head   # apply migrations
 uv run alembic revision --autogenerate -m "..."  # generate a migration from model changes
 uv run python -m scripts.new_domain <name>  # scaffold a new app/<name>/ domain package
