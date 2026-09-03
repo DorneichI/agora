@@ -50,17 +50,13 @@ def scaffold_domain(backend_dir: Path, domain_name: str) -> list[Path]:
             "Every table model needs a matching <Name>Read class in this same file, "
             "excluding SoftDeleteMixin's bookkeeping columns from the API response -- see "
             'backend/CLAUDE.md\'s "Response schemas" convention. tests/test_architecture.py '
-            'enforces this automatically.\n"""\n\n'
-            "from sqlmodel import SQLModel  # noqa: F401\n\n"
-            "from app.soft_delete import SoftDeleteMixin  # noqa: F401\n"
+            'enforces this automatically.\n"""\n'
         ),
         "repository.py": (
             f'"""Every raw session.execute(select(...)) query app.{domain_name}\'s '
             'router(s)/deps need -- see backend/CLAUDE.md\'s "Domain modules" section. '
             "tests/test_architecture.py fails if a router in this package queries directly "
-            'instead of calling a function defined here.\n"""\n\n'
-            "from sqlalchemy.ext.asyncio import AsyncSession  # noqa: F401\n"
-            "from sqlmodel import select  # noqa: F401\n"
+            'instead of calling a function defined here.\n"""\n'
         ),
         "deps.py": (
             f'"""FastAPI dependencies specific to app.{domain_name} (e.g. require_*/get_* '
