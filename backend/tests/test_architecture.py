@@ -8,9 +8,12 @@ documented convention -- found while auditing the project's structure.
 """
 
 import ast
+import importlib
+import inspect
 from pathlib import Path
 
 import pytest
+from sqlmodel import SQLModel
 
 APP_DIR = Path(__file__).resolve().parent.parent / "app"
 
@@ -62,4 +65,29 @@ def test_domain_routers_never_query_directly(domain_dir: Path) -> None:
         f"app/{domain_dir.name}/repository.py: {violations}. Move the query into "
         f"repository.py and call that function from the router instead -- see "
         f"backend/CLAUDE.md's 'Domain modules' section."
+    )
+
+
+def _model_modules() -> list[str]:
+    """Every module the '*Read schema pairing' convention applies to: app/models/*.py
+    (excluding __init__.py) plus every app/<domain>/models.py."""
+    modules = [
+        f"app.models.{f.stem}" for f in (APP_DIR / "models").glob("*.py") if f.stem != "__init__"
+    ]
+    modules += [f"app.{f.parent.name}.models" for f in APP_DIR.glob("*/models.py")]
+    return sorted(modules)
+
+
+@pytest.mark.parametrize("module_path", _model_modules())
+def test_every_table_model_has_a_read_pair(module_path: str) -> None:
+    module = importlib.import_module(module_path)
+    table_model_names = {
+        name
+        for name, obj in inspect.getmembers(module, inspect.isclass)
+        if issubclass(obj, SQLModel) and obj.__module__ == module_path and hasattr(obj, "__table__")
+    }
+    missing = sorted(name for name in table_model_names if not hasattr(module, f"{name}Read"))
+    assert not missing, (
+        f"{module_path}: table model(s) {missing} have no matching *Read schema -- see "
+        f"backend/CLAUDE.md's 'Response schemas' convention."
     )
