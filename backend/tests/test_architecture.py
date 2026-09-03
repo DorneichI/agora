@@ -14,7 +14,7 @@ import re
 from pathlib import Path
 
 import pytest
-from sqlmodel import SQLModel
+from sqlmodel import Field, SQLModel
 
 from app.main import app
 
@@ -83,6 +83,35 @@ def _model_modules() -> list[str]:
     return sorted(modules)
 
 
+def _is_valid_read_pair(read_cls: object) -> bool:
+    """Whether a table model's *Read attribute satisfies the pairing convention. Requires a
+    distinct, non-table SQLModel schema -- not missing, and not a bare alias back to the table
+    model itself (e.g. `FooRead = Foo`), which would silently expose every SoftDeleteMixin
+    bookkeeping column the *Read convention exists to hide."""
+    return (
+        read_cls is not None
+        and inspect.isclass(read_cls)
+        and issubclass(read_cls, SQLModel)
+        and not hasattr(read_cls, "__table__")
+    )
+
+
+def test_read_pair_check_rejects_bare_alias_back_to_table_model() -> None:
+    """Regression guard for issue #129's gap #1: a `FooRead = Foo` alias must not satisfy
+    the *Read pairing convention."""
+
+    class Widget(SQLModel, table=True):
+        id: int | None = Field(default=None, primary_key=True)
+
+    try:
+        assert _is_valid_read_pair(Widget) is False, (
+            "a bare FooRead = Foo alias must be flagged as invalid, not accepted as a valid "
+            "*Read pair"
+        )
+    finally:
+        SQLModel.metadata.remove(Widget.__table__)
+
+
 @pytest.mark.parametrize("module_path", _model_modules())
 def test_every_table_model_has_a_read_pair(module_path: str) -> None:
     module = importlib.import_module(module_path)
@@ -91,9 +120,14 @@ def test_every_table_model_has_a_read_pair(module_path: str) -> None:
         for name, obj in inspect.getmembers(module, inspect.isclass)
         if issubclass(obj, SQLModel) and obj.__module__ == module_path and hasattr(obj, "__table__")
     }
-    missing = sorted(name for name in table_model_names if not hasattr(module, f"{name}Read"))
-    assert not missing, (
-        f"{module_path}: table model(s) {missing} have no matching *Read schema -- see "
+    invalid = sorted(
+        name
+        for name in table_model_names
+        if not _is_valid_read_pair(getattr(module, f"{name}Read", None))
+    )
+    assert not invalid, (
+        f"{module_path}: table model(s) {invalid} have no matching *Read schema (or their "
+        f"<Name>Read exists but is not a distinct, non-table SQLModel class) -- see "
         f"backend/CLAUDE.md's 'Response schemas' convention."
     )
 
