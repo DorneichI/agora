@@ -1,11 +1,6 @@
-"""League standings.
-
-This lives in its own app.standings package, not app.leagues or app.gameplay: computing a
-league's standings requires both league membership (app.leagues) and aggregated prediction
-points (app.gameplay), and pyproject.toml's import-linter contract makes those two domains
-mutually independent (`independence` contract) so neither may import the other.
-app.standings is the one place allowed to depend on both -- its entire purpose is bridging
-them. See backend/CLAUDE.md's "Domain modules" section for the general rule.
+"""League standings -- cross-domain composition over app.leagues and app.gameplay. See
+backend/CLAUDE.md's "Domain modules" section (the "Cross-domain composition" paragraph) for
+why this lives in its own app.standings package instead of either domain.
 """
 
 from fastapi import APIRouter, Depends
