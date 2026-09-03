@@ -59,6 +59,26 @@ async def list_predictions(
     return list((await session.execute(statement)).scalars().all())
 
 
+async def get_prediction_market_by_id(
+    session: AsyncSession, market_id: int
+) -> PredictionMarket | None:
+    return (
+        await session.execute(select(PredictionMarket).where(PredictionMarket.id == market_id))
+    ).scalar_one_or_none()
+
+
+async def get_prediction_by_market_and_user(
+    session: AsyncSession, market_id: int, user_id: int
+) -> Prediction | None:
+    return (
+        await session.execute(
+            select(Prediction).where(
+                Prediction.market_id == market_id, Prediction.user_id == user_id
+            )
+        )
+    ).scalar_one_or_none()
+
+
 async def sum_settled_points_by_user(
     session: AsyncSession, user_ids: list[int]
 ) -> dict[int, float]:

@@ -6,7 +6,6 @@ from app.gameplay.routers import (
     predictions,
     race_entries,
     races,
-    standings,
     teams,
     venues,
 )
@@ -19,4 +18,3 @@ router.include_router(races.router)
 router.include_router(race_entries.router)
 router.include_router(prediction_markets.router)
 router.include_router(predictions.router)
-router.include_router(standings.router)

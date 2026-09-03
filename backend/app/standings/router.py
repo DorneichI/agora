@@ -1,13 +1,11 @@
 """League standings.
 
-This module serves /leagues/{league_id}/standings but lives in app.gameplay, not
-app.leagues -- the URL prefix and the owning module deliberately disagree.
-
-Predictions are global per user, not scoped to a league, so a league leaderboard has to
-join league membership against each member's prediction points. The import-linter contract
-in pyproject.toml forbids app.leagues importing app.gameplay while leaving the reverse
-direction open, so app.gameplay is the only side that can see both. See backend/CLAUDE.md's
-"Domain modules" section.
+This lives in its own app.standings package, not app.leagues or app.gameplay: computing a
+league's standings requires both league membership (app.leagues) and aggregated prediction
+points (app.gameplay), and pyproject.toml's import-linter contract makes those two domains
+mutually independent (`independence` contract) so neither may import the other.
+app.standings is the one place allowed to depend on both -- its entire purpose is bridging
+them. See backend/CLAUDE.md's "Domain modules" section for the general rule.
 """
 
 from fastapi import APIRouter, Depends
@@ -16,11 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.deps import require_username
 from app.db import get_session
 from app.gameplay import repository
-from app.gameplay.models import LeagueStandingRead
 from app.leagues.deps import require_league_member
 from app.leagues.models import League
 from app.leagues.repository import list_active_members
 from app.models import User
+from app.standings.models import LeagueStandingRead
 
 router = APIRouter()
 

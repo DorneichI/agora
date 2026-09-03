@@ -52,9 +52,10 @@ Run from inside `backend/` (locally with `uv`, or via `docker compose exec backe
 uv run pytest              # tests
 uv run ruff check .        # lint
 uv run ruff format --check .  # format check (drop --check to auto-format)
-uv run lint-imports         # import boundary contract (app.leagues must not import app.gameplay)
+uv run lint-imports         # import boundary contracts (see "Domain modules" below)
 uv run alembic upgrade head   # apply migrations
 uv run alembic revision --autogenerate -m "..."  # generate a migration from model changes
+uv run python -m scripts.new_domain <name>  # scaffold a new app/<name>/ domain package
 ```
 
 `DATABASE_URL` (see root `.env.example`) is read by both the app and Alembic's `env.py` — the
@@ -138,6 +139,11 @@ own package instead of adding another shared cross-cutting layer:
   `router` -- `main.py`'s import becomes
   `from app.<domain>.routers import router as <domain>_router` (package, not module).
 
+`scripts/new_domain.py` (`uv run python -m scripts.new_domain <name>`) generates all four
+files' skeletons in one step. It deliberately does not wire `app/main.py` or add an
+import-linter contract for the new domain -- both need a judgment call about what the domain
+should be allowed to import -- but prints a reminder for each so neither gets forgotten.
+
 `app/deps.py` stays reserved for genuinely generic, cross-domain concerns (currently just
 `require_admin` — identity verification itself (`get_current_user`, `require_username`) lives in
 `app/auth/deps.py`, behind the `IdentityProvider` port in `app/auth/ports.py`/`clerk_provider.py`).
@@ -145,20 +151,30 @@ own package instead of adding another shared cross-cutting layer:
 does not re-export a domain package's symbols -- import them from `app.<domain>.models` directly
 (no backwards-compat shim; see root `CLAUDE.md`'s rule against re-exporting types).
 
-`app/leagues/` and `app/gameplay/` are both built this way (issues #63 and #64). The
-`app.leagues` -> `app.gameplay` import direction is forbidden by an `import-linter` contract
-(`[tool.importlinter]` in `pyproject.toml`, enforced in CI via `uv run lint-imports`) so the two
-stay independently removable; the reverse direction (gameplay depending on leagues) is allowed
-and unchecked. Both `app/leagues/` and `app/gameplay/` use the `routers/` package split described
-above -- `app/gameplay/router.py` was the first to need this split (issue #87), and
+This "foundation stays domain-agnostic" rule is enforced, not just documented: an import-linter
+`forbidden` contract (`pyproject.toml`) blocks `app.auth`, `app.deps`, `app.routers`, `app.db`,
+`app.crud_helpers`, `app.soft_delete`, and `app.models` from importing any domain package. If a
+piece of shared infrastructure ever needs something domain-specific, that's a sign the logic
+belongs in the domain's own `deps.py`/`repository.py` instead of being added to the shared layer.
+
+`app/leagues/` and `app/gameplay/` are both built this way (issues #63 and #64). `app.leagues`
+and `app.gameplay` are mutually independent -- enforced by an import-linter `independence`
+contract, not the one-way `forbidden` contract this section used to describe -- so either domain
+can be removed without the other noticing. Both use the `routers/` package split described above
+-- `app/gameplay/router.py` was the first to need this split (issue #87), and
 `app/leagues/router.py` followed once the file-length check flagged it (issue #102) — leagues +
 invites endpoints split into `app/leagues/routers/leagues.py` and
 `app/leagues/routers/invites.py`.
 
-**A route's URL prefix does not decide which module owns it.** `GET
-/leagues/{league_id}/standings` lives in `app/gameplay/routers/standings.py`, not in
-`app/leagues/`, because it has to read league membership *and* prediction points at once and only
-the `gameplay -> leagues` import direction is permitted. Any future endpoint that spans both
-domains belongs on the `app.gameplay` side for the same reason, whatever its URL says. Give such
-a module a header comment explaining the mismatch — it is invisible from the route path alone
-(issue #99 was the first case).
+**Cross-domain composition gets its own dedicated package, never bolted onto either domain it
+reads from.** `GET /leagues/{league_id}/standings` needs both league membership (`app.leagues`)
+and aggregated prediction points (`app.gameplay`) at once -- but neither domain may import the
+other, so this endpoint lives in `app.standings`, a small package whose only job is depending on
+both. `app.standings` is deliberately exempt from the `app.leagues`/`app.gameplay` independence
+contract above (it's the one place allowed to import either) and from the foundation-independence
+contract above (it's not foundation -- depending on domains is its entire purpose); its own
+`forbidden_modules` list adds `app.standings` so foundation can't import it either. Any future
+endpoint spanning two-or-more domains gets the same treatment: a new small `app.<name>` package,
+not a home inside one of the domains it reads from. Give such a module a header comment
+explaining why it's separate -- that reasoning is invisible from the route path alone (issue #99
+was the first case, when this still lived inside `app.gameplay`).

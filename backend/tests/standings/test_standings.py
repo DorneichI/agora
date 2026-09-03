@@ -395,7 +395,7 @@ async def test_standings_breaks_ties_alphabetically_by_username(client, make_use
 async def test_standings_totals_are_global_not_league_scoped(client, make_user, db_session):
     """Predictions have no league of their own -- a member's total is every settled
     prediction they hold, regardless of which league (if any) the market relates to. This
-    pins the premise the endpoint's placement in app.gameplay rests on."""
+    pins the premise app.standings' whole existence rests on."""
     token, member_id = await make_user("user_st_13", "st13@example.com", "Member")
     _outsider_token, outsider_id = await make_user("user_st_14", "st14@example.com", "Outsider")
     await _set_username(db_session, member_id, "member")

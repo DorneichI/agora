@@ -2,10 +2,9 @@ import secrets
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import SQLModel, select
+from sqlmodel import SQLModel
 
 from app.auth.deps import require_username
 from app.db import get_session
@@ -16,6 +15,8 @@ from app.leagues.repository import (
     get_invite_by_code,
     get_league_by_id,
     get_membership_including_deleted,
+    get_user_by_username,
+    redeem_targeted_invite,
 )
 from app.leagues.routers._shared import UNIQUE_VIOLATION_SQLSTATE, is_membership_collision
 from app.models import User
@@ -90,9 +91,7 @@ async def create_invite(
         # Usernames are always stored lowercased (see UsernameSet's validator in
         # app/routers/users.py), so normalize the lookup the same way rather than requiring
         # the inviter to type the exact case the target originally chose.
-        target_user = (
-            await session.execute(select(User).where(User.username == body.target_username.lower()))
-        ).scalar_one_or_none()
+        target_user = await get_user_by_username(session, body.target_username.lower())
         if target_user is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -163,16 +162,8 @@ async def redeem_invite(
         )
 
     if is_targeted:
-        result = await session.execute(
-            update(LeagueInvite)
-            .where(
-                LeagueInvite.id == invite.id,
-                LeagueInvite.redeemed_at.is_(None),
-                LeagueInvite.revoked_at.is_(None),
-            )
-            .values(redeemed_at=now)
-        )
-        if result.rowcount == 0:
+        redeemed = await redeem_targeted_invite(session, invite.id, now)
+        if not redeemed:
             raise HTTPException(
                 status_code=status.HTTP_410_GONE, detail="This invite is no longer valid"
             )
