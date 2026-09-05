@@ -11,6 +11,7 @@ import ast
 import importlib
 import inspect
 import re
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -36,15 +37,25 @@ def _domain_dirs_with_routers() -> list[Path]:
 
 
 def _router_files_for_domain(domain_dir: Path) -> list[Path]:
+    """Every file in domain_dir whose code is expected to route queries through this
+    domain's repository.py rather than querying directly: router.py, or every file under
+    routers/ with no exceptions (including __init__.py and any shared helper module like
+    _shared.py -- backend/CLAUDE.md draws the line at repository.py/models.py, not at any
+    particular router filename, so excluding one by name would just be a blind spot by
+    convention rather than by principle), plus deps.py -- backend/CLAUDE.md's "Domain
+    modules" section describes repository.py as covering every query "this domain's
+    routers/deps need", so deps.py is exactly as in-scope as any router file."""
+    files = []
     single = domain_dir / "router.py"
     if single.exists():
-        return [single]
+        files.append(single)
     routers_dir = domain_dir / "routers"
     if routers_dir.is_dir():
-        return sorted(
-            p for p in routers_dir.glob("*.py") if p.name not in {"__init__.py", "_shared.py"}
-        )
-    return []
+        files.extend(sorted(routers_dir.glob("*.py")))
+    deps = domain_dir / "deps.py"
+    if deps.exists():
+        files.append(deps)
+    return files
 
 
 def _raw_execute_call_lines(file_path: Path) -> list[int]:
@@ -90,6 +101,20 @@ def test_standings_is_covered_by_the_router_boundary_scan() -> None:
     )
 
 
+def test_router_boundary_scan_also_covers_deps_and_shared_helper_files() -> None:
+    """Regression guard: app/leagues/deps.py and app/leagues/routers/_shared.py must both be
+    scanned too -- backend/CLAUDE.md's repository.py rule isn't scoped to files literally
+    named router.py, so a raw query hidden in a domain's deps.py or a routers/ package's
+    shared helper module must not go unnoticed the way app.standings's missing repository.py
+    once did."""
+    leagues_files = {p.name for p in _router_files_for_domain(APP_DIR / "leagues")}
+    assert "deps.py" in leagues_files, "deps.py must be included in the repository-boundary scan"
+    assert "_shared.py" in leagues_files, (
+        "a routers/ package's shared helper module must be included in the "
+        "repository-boundary scan, not excluded by filename"
+    )
+
+
 def _model_modules() -> list[str]:
     """Every module the '*Read schema pairing' convention applies to: app/models/*.py
     (excluding __init__.py) plus every app/<domain>/models.py."""
@@ -100,16 +125,24 @@ def _model_modules() -> list[str]:
     return sorted(modules)
 
 
+_SOFT_DELETE_BOOKKEEPING_FIELDS = {"created_at", "updated_at", "deleted_at"}
+
+
 def _is_valid_read_pair(read_cls: object) -> bool:
     """Whether a table model's *Read attribute satisfies the pairing convention. Requires a
-    distinct, non-table SQLModel schema -- not missing, and not a bare alias back to the table
-    model itself (e.g. `FooRead = Foo`), which would silently expose every SoftDeleteMixin
-    bookkeeping column the *Read convention exists to hide."""
+    distinct, non-table SQLModel schema -- not missing, not a bare alias back to the table
+    model itself (e.g. `FooRead = Foo`), and not a class that re-declares any of
+    SoftDeleteMixin's bookkeeping columns itself. Both would silently expose exactly the
+    columns backend/CLAUDE.md's "Response schemas" convention says the *Read pairing exists
+    to hide -- being a distinct, non-table class is necessary but not sufficient; the whole
+    point of the convention is excluding these specific fields, so this check verifies that
+    directly instead of only its "not the table itself" proxy."""
     return (
         read_cls is not None
         and inspect.isclass(read_cls)
         and issubclass(read_cls, SQLModel)
         and not hasattr(read_cls, "__table__")
+        and not (_SOFT_DELETE_BOOKKEEPING_FIELDS & set(read_cls.model_fields))
     )
 
 
@@ -127,6 +160,24 @@ def test_read_pair_check_rejects_bare_alias_back_to_table_model() -> None:
         )
     finally:
         SQLModel.metadata.remove(Widget.__table__)
+
+
+def test_read_pair_check_rejects_read_class_that_copies_bookkeeping_columns() -> None:
+    """Regression guard: a *Read class must exclude SoftDeleteMixin's bookkeeping columns,
+    not merely be a distinct, non-table class -- a careless FooRead that re-declares
+    created_at/updated_at/deleted_at instead of excluding them defeats the *Read
+    convention's actual stated purpose just as much as a bare alias does."""
+
+    class LeakyRead(SQLModel):
+        id: int
+        created_at: datetime
+        updated_at: datetime
+        deleted_at: datetime | None
+
+    assert _is_valid_read_pair(LeakyRead) is False, (
+        "a *Read class that re-declares SoftDeleteMixin's bookkeeping columns must be "
+        "flagged as invalid, not accepted as a valid *Read pair"
+    )
 
 
 @pytest.mark.parametrize("module_path", _model_modules())
