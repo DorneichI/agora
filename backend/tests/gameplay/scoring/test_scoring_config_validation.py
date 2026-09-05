@@ -51,6 +51,16 @@ def test_rejects_an_invalid_enabled_component_config():
         validate_scoring_config({"winner": {"enabled": True, "mode": "flat"}}, entry_count=4)
 
 
+@pytest.mark.parametrize("bad_value", ["on", 1, True, ["enabled"]])
+def test_rejects_a_component_config_that_is_not_an_object(bad_value):
+    """scoring_config is caller-supplied JSON with no nested schema (PredictionMarketCreate's
+    scoring_config field is a bare `dict`), so a truthy non-dict value for a component key
+    (e.g. {"winner": "on"}) must be rejected as a clean ScoringConfigError -- not crash with
+    an unhandled AttributeError/TypeError from treating it as a dict downstream."""
+    with pytest.raises(ScoringConfigError, match="winner: component config must be an object"):
+        validate_scoring_config({"winner": bad_value}, entry_count=4)
+
+
 def test_margin_per_market_reads_typical_margin_seconds_from_the_top_level_config():
     """typical_margin_seconds lives at the top of scoring_config, not inside the margin slice
     -- validation has to inject it before handing the slice to the component."""

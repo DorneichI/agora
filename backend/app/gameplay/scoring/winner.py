@@ -3,9 +3,9 @@
 from app.gameplay.models import Prediction, RaceEntry
 from app.gameplay.scoring.base import (
     ScoringComponent,
-    find_winner,
     require_mode,
     require_positive_number,
+    zero_totals_or_winner,
 )
 
 
@@ -37,9 +37,7 @@ class WinnerComponent(ScoringComponent):
         predictions: list[Prediction],
         race_entries: list[RaceEntry],
     ) -> dict[int, float]:
-        points = {prediction.id: 0.0 for prediction in predictions}
-
-        winner = find_winner(race_entries)
+        points, winner = zero_totals_or_winner(predictions, race_entries)
         if winner is None:
             return points
 

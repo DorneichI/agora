@@ -1,11 +1,6 @@
-"""League standings.
-
-This lives in its own app.standings package, not app.leagues or app.gameplay: computing a
-league's standings requires both league membership (app.leagues) and aggregated prediction
-points (app.gameplay), and pyproject.toml's import-linter contract makes those two domains
-mutually independent (`independence` contract) so neither may import the other.
-app.standings is the one place allowed to depend on both -- its entire purpose is bridging
-them. See backend/CLAUDE.md's "Domain modules" section for the general rule.
+"""League standings -- cross-domain composition over app.leagues and app.gameplay. See
+backend/CLAUDE.md's "Domain modules" section (the "Cross-domain composition" paragraph) for
+why this lives in its own app.standings package instead of either domain.
 """
 
 from fastapi import APIRouter, Depends
@@ -13,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import require_username
 from app.db import get_session
-from app.gameplay import repository
+from app.gameplay.repository import sum_settled_points_by_user
 from app.leagues.deps import require_league_member
 from app.leagues.models import League
 from app.leagues.repository import list_active_members
@@ -49,9 +44,7 @@ async def list_league_standings(
     have no predictions yet.
     """
     members = await list_active_members(session, league.id)
-    totals = await repository.sum_settled_points_by_user(
-        session, [user.id for _membership, user in members]
-    )
+    totals = await sum_settled_points_by_user(session, [user.id for _membership, user in members])
 
     standings = [
         LeagueStandingRead(

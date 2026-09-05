@@ -1,6 +1,7 @@
 """Shared pieces of the scoring-component framework: the component interface, the
 winner-derivation helper both components need, and the error types callers catch."""
 
+import math
 from abc import ABC, abstractmethod
 
 from app.gameplay.models import Prediction, RaceEntry
@@ -43,13 +44,27 @@ def require_mode(config: dict, component: str) -> str:
     return mode
 
 
-def require_positive_number(config: dict, key: str, component: str) -> float:
-    """A strictly-positive numeric config value, or ScoringConfigError.
+def is_positive_finite_number(value: object) -> bool:
+    """Whether value is usable as a strictly-positive numeric config/payload value.
 
     bool is excluded explicitly: isinstance(True, int) is True in Python, so without the
-    guard a `True` would sail through as the number 1."""
+    guard a `True` would sail through as the number 1. NaN/+-Infinity are excluded via
+    math.isfinite: every comparison with float('nan') is False, so a bare `value <= 0`
+    check alone lets NaN (and, since inf <= 0 is also False, +Infinity) through as if it
+    were a valid positive number -- silently corrupting any later arithmetic (e.g.
+    points_awarded ending up NaN, or a payout formula overflowing on an infinite input)."""
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and math.isfinite(value)
+        and value > 0
+    )
+
+
+def require_positive_number(config: dict, key: str, component: str) -> float:
+    """A strictly-positive, finite numeric config value, or ScoringConfigError."""
     value = config.get(key)
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+    if not is_positive_finite_number(value):
         raise ScoringConfigError(
             f"{component}: {key!r} must be a number greater than 0, got {value!r}"
         )
@@ -67,6 +82,14 @@ class ScoringComponent(ABC):
 
     #: Key this component occupies in a market's scoring_config, and its name in error messages.
     name: str
+
+    #: Top-level scoring_config keys (outside this component's own slice) that must be
+    #: injected into it before validate_market_config/validate_prediction_payload/settle see
+    #: it -- e.g. margin's "typical_margin_seconds", which lives at the top of scoring_config
+    #: rather than inside margin's own slice. Empty for a component with no such need. Reading
+    #: this generically (see scoring/__init__.py's _effective_config) is what lets a future
+    #: component add its own top-level key without editing shared orchestration code.
+    extra_top_level_keys: tuple[str, ...] = ()
 
     def is_eligible(self, entry_count: int) -> bool:
         """Whether this component can be graded at all for a race with this many entries.
@@ -97,3 +120,15 @@ class ScoringComponent(ABC):
 
         Every passed prediction appears in the result, at 0.0 if it earned nothing -- callers
         never have to distinguish "scored zero" from "missing"."""
+
+
+def zero_totals_or_winner(
+    predictions: list[Prediction], race_entries: list[RaceEntry]
+) -> tuple[dict[int, float], RaceEntry | None]:
+    """The shared first step of every settle() implementation (both components' and
+    settle_market's own top-level orchestration): a zero-initialized totals dict, one entry
+    per prediction, plus the race's winning entry (or None if nobody finished). Every caller
+    follows this with the same rule -- `if winner is None: return totals` -- to void the
+    whole market when there's no winner to grade against; factored here once instead of
+    copy-pasted in settle_market, WinnerComponent.settle, and MarginComponent.settle."""
+    return {prediction.id: 0.0 for prediction in predictions}, find_winner(race_entries)

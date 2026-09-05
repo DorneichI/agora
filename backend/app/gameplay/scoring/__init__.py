@@ -14,7 +14,7 @@ from app.gameplay.scoring.base import (
     ScoringComponent,
     ScoringConfigError,
     ScoringPayloadError,
-    find_winner,
+    zero_totals_or_winner,
 )
 from app.gameplay.scoring.margin import DEFAULT_TYPICAL_MARGIN_SECONDS, MarginComponent
 from app.gameplay.scoring.winner import WinnerComponent
@@ -34,7 +34,6 @@ __all__ = [
     "ScoringConfigError",
     "ScoringPayloadError",
     "WinnerComponent",
-    "find_winner",
     "settle_market",
     "validate_prediction_payload",
     "validate_scoring_config",
@@ -42,15 +41,25 @@ __all__ = [
 
 
 def _effective_config(scoring_config: dict, name: str) -> dict:
-    """One component's own slice of a market's scoring_config.
+    """One component's own slice of a market's scoring_config, plus each of the component's
+    own extra_top_level_keys injected in (e.g. margin's "typical_margin_seconds", which is
+    stored at the top level of scoring_config rather than inside margin's own slice) -- read
+    generically off the component itself (ScoringComponent.extra_top_level_keys) so adding a
+    component with its own top-level key needs no change here, matching the module
+    docstring's "adding one means adding its module plus one entry in COMPONENTS" promise.
+    Doing this in one place also keeps every component seeing only its own keys --
+    WinnerComponent is never handed margin's settings.
 
-    "typical_margin_seconds" is stored at the top level of scoring_config rather than inside
-    the margin slice, so it gets injected here. Doing it in one place keeps every component
-    seeing only its own keys -- WinnerComponent is never handed margin's settings, and
-    MarginComponent stays testable against a small standalone dict."""
-    config = dict(scoring_config.get(name) or {})
-    if name == "margin":
-        config["typical_margin_seconds"] = scoring_config.get("typical_margin_seconds")
+    scoring_config's per-component value is caller-supplied JSON (via PredictionMarketCreate's
+    untyped `scoring_config: dict` field), so it is not guaranteed to actually be an object --
+    raises ScoringConfigError if scoring_config[name] is present but not a dict, rather than
+    silently treating it as one and crashing on the first .get() call downstream."""
+    raw = scoring_config.get(name)
+    if raw is not None and not isinstance(raw, dict):
+        raise ScoringConfigError(f"{name}: component config must be an object, got {raw!r}")
+    config = dict(raw or {})
+    for key in COMPONENTS[name].extra_top_level_keys:
+        config[key] = scoring_config.get(key)
     return config
 
 
@@ -60,11 +69,12 @@ def _enabled_components(
     """Each enabled component with its name and effective config. A component that's absent
     or explicitly disabled is skipped entirely -- its config is never validated and its
     eligibility is never checked."""
-    return [
-        (name, component, _effective_config(scoring_config, name))
-        for name, component in COMPONENTS.items()
-        if (scoring_config.get(name) or {}).get("enabled")
-    ]
+    enabled = []
+    for name, component in COMPONENTS.items():
+        component_config = _effective_config(scoring_config, name)
+        if component_config.get("enabled"):
+            enabled.append((name, component, component_config))
+    return enabled
 
 
 def validate_scoring_config(config: dict, entry_count: int) -> None:
@@ -104,9 +114,8 @@ def settle_market(
     Every passed prediction appears in the result, at 0.0 if it earned nothing. If no entry
     finished at all the whole market voids: everyone gets 0.0 from every component, and it
     counts as a loss for nobody."""
-    totals = {prediction.id: 0.0 for prediction in predictions}
-
-    if find_winner(race_entries) is None:
+    totals, winner = zero_totals_or_winner(predictions, race_entries)
+    if winner is None:
         return totals
 
     for _name, component, component_config in _enabled_components(market.scoring_config):
