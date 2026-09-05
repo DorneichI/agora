@@ -1,13 +1,16 @@
 """The margin component: pick how big the winning margin will be."""
 
+import sys
+
 from app.gameplay.models import Prediction, RaceEntry
 from app.gameplay.scoring.base import (
     ScoringComponent,
     ScoringConfigError,
     ScoringPayloadError,
-    find_winner,
+    is_positive_finite_number,
     require_mode,
     require_positive_number,
+    zero_totals_or_winner,
 )
 
 #: The global "typical winning margin" reference constant, in seconds -- the M in a flat
@@ -36,6 +39,7 @@ class MarginComponent(ScoringComponent):
         "typical_margin_seconds"."""
 
     name = "margin"
+    extra_top_level_keys = ("typical_margin_seconds",)
 
     def validate_market_config(self, config: dict) -> None:
         if require_mode(config, self.name) == "pool":
@@ -54,11 +58,7 @@ class MarginComponent(ScoringComponent):
     def validate_prediction_payload(self, config: dict, payload: dict) -> None:
         threshold = payload.get("margin_threshold_seconds")
         if config.get("enabled"):
-            if (
-                isinstance(threshold, bool)
-                or not isinstance(threshold, (int, float))
-                or threshold <= 0
-            ):
+            if not is_positive_finite_number(threshold):
                 raise ScoringPayloadError(
                     "margin_threshold_seconds is required and must be a number greater than 0 "
                     "when the margin component is enabled"
@@ -76,13 +76,12 @@ class MarginComponent(ScoringComponent):
     ) -> dict[int, float]:
         """Assumes every prediction has a non-null margin_threshold_seconds -- guaranteed by
         validate_prediction_payload having run at submission time (the endpoint layer's job,
-        a later issue). Settlement does not re-check it."""
-        points = {prediction.id: 0.0 for prediction in predictions}
+        a later issue). Settlement does not re-check it.
 
-        # Derived here rather than taken from WinnerComponent: margin has to know who won even
-        # when the winner component itself is disabled, so it can't depend on that component's
-        # output.
-        winner = find_winner(race_entries)
+        winner is derived here rather than taken from WinnerComponent: margin has to know who
+        won even when the winner component itself is disabled, so it can't depend on that
+        component's output."""
+        points, winner = zero_totals_or_winner(predictions, race_entries)
         if winner is None:
             return points
 
@@ -121,5 +120,15 @@ class MarginComponent(ScoringComponent):
         )
         flat_base = float(config["flat_base"])
         for prediction in covered:
-            points[prediction.id] = flat_base * 2 ** (prediction.margin_threshold_seconds / m)
+            try:
+                points[prediction.id] = flat_base * 2 ** (prediction.margin_threshold_seconds / m)
+            except OverflowError:
+                # margin_threshold_seconds is only bounded below (> 0), not above, so an
+                # extreme-but-otherwise-valid submitted threshold can push this exponential
+                # payout formula past float64's range. Clamp to the largest finite float
+                # instead of letting settlement crash for every prediction on the market --
+                # this preserves "a bolder threshold pays more" (the clamp is still the
+                # largest representable payout) without inventing a new rejection rule at
+                # submission time.
+                points[prediction.id] = sys.float_info.max
         return points

@@ -81,8 +81,16 @@ def test_require_positive_number_returns_value_as_float():
     assert require_positive_number({"flat_points": 10}, "flat_points", "winner") == 10.0
 
 
-@pytest.mark.parametrize("value", [None, 0, -1, "10", True])
+@pytest.mark.parametrize(
+    "value",
+    [None, 0, -1, "10", True, float("nan"), float("inf"), float("-inf")],
+)
 def test_require_positive_number_rejects_non_positive_and_non_numbers(value):
+    """NaN and +-Infinity are deliberately included alongside the non-numeric/non-positive
+    cases: every comparison with float('nan') is False, and inf/-inf both fail a bare
+    `value <= 0` check too, so without an explicit finiteness check either would otherwise
+    sail through as if it were a valid positive number -- silently corrupting any later
+    arithmetic built on it (e.g. a settled Prediction.points_awarded ending up NaN)."""
     with pytest.raises(ScoringConfigError, match="'flat_points' must be a number greater than 0"):
         require_positive_number({"flat_points": value}, "flat_points", "winner")
 

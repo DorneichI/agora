@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from app.gameplay.models import Prediction, RaceEntry
@@ -81,6 +83,21 @@ def test_flat_per_market_uses_the_markets_own_m_not_the_global_one():
 
     assert points[1] == pytest.approx(5.0 * 2 ** (3.0 / 6.0))
     assert points[1] != pytest.approx(5.0 * 2 ** (3.0 / DEFAULT_TYPICAL_MARGIN_SECONDS))
+
+
+def test_flat_mode_clamps_to_max_float_instead_of_overflowing_on_extreme_threshold():
+    """margin_threshold_seconds is only bounded below (> 0), and RaceEntry.time has no upper
+    bound either -- a race with an extreme recorded time gap (e.g. a data-entry error) paired
+    with an almost-as-extreme, still-covered threshold pushes 2**(threshold/M) past float64's
+    range. Settlement must clamp to the largest finite float instead of letting an
+    OverflowError crash settlement for every prediction on the market."""
+    entries = [_entry(1, 10, 1e9), _entry(2, 20, 0.0)]
+    # Covered: actual margin (1e9 - 0.0 == 1e9) > threshold (5e8).
+    predictions = [_prediction(1, 20, 5e8)]
+
+    points = MarginComponent().settle(FLAT_GLOBAL, predictions, entries)
+
+    assert points[1] == sys.float_info.max
 
 
 def test_a_bolder_threshold_pays_more_in_flat_mode():
@@ -210,7 +227,9 @@ def test_validate_prediction_payload_requires_a_positive_threshold_when_enabled(
     MarginComponent().validate_prediction_payload(FLAT_GLOBAL, {"margin_threshold_seconds": 2.5})
 
 
-@pytest.mark.parametrize("threshold", [None, 0, -1.0, "2.5", True])
+@pytest.mark.parametrize(
+    "threshold", [None, 0, -1.0, "2.5", True, float("nan"), float("inf"), float("-inf")]
+)
 def test_validate_prediction_payload_rejects_bad_threshold_when_enabled(threshold):
     with pytest.raises(ScoringPayloadError, match="margin_threshold_seconds is required"):
         MarginComponent().validate_prediction_payload(
